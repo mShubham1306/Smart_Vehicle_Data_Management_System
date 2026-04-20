@@ -6,5 +6,5 @@ pandas
 openpyxl
 python-multipart
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
 dnspython

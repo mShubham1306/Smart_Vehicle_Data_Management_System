@@ -5,7 +5,7 @@ from database import users_collection
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import os
-from passlib.context import CryptContext
+import bcrypt
 from jose import JWTError, jwt
 
 auth_router = APIRouter()
@@ -18,7 +18,6 @@ JWT_SECRET    = os.getenv("JWT_SECRET", "smartinsure-fallback-secret-change-me")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -27,11 +26,11 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # ─────────────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password[:72].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain[:72].encode('utf-8'), hashed.encode('utf-8'))
 
 
 def create_access_token(user_id: str, username: str) -> str:
