@@ -7,16 +7,7 @@ from auth import auth_router
 
 app = FastAPI(title="Smart Vehicle Insurance System API")
 
-app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-app.include_router(api_router, prefix="/api", tags=["data"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
-
-
-# Configure CORS
+# Configure CORS FIRST before any routers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,6 +15,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(api_router, prefix="/api", tags=["data"])
+
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 
 
 @app.get("/")
