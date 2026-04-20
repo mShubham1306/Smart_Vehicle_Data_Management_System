@@ -1,0 +1,132 @@
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+import { environment } from '../environments/environment';
+
+const API = environment.apiUrl;
+
+// Fixed canonical fields — mirrors backend FIXED_FIELDS
+export const FIXED_FIELDS = [
+  'Sr. No.',
+  'Vehicle',
+  'engineNum',
+  'chassisNum',
+  'ownerName',
+  'ownerAddress',
+  'vehicleMake',
+  'vehicleModel',
+  'vehicleClass',
+  'fuelType',
+  'saleAmount',
+  'ownerMobileNo',
+  'vehicleManufacturerName',
+  'model',
+  'vehicleInsuranceCompanyName',
+  'expiredInsuranceUpto',
+  'vehicleInsurancePolicyNumber',
+];
+
+export interface SheetInfo {
+  name: string;
+  vehicle_count: number;
+  created_at?: string;
+}
+
+@Injectable({ providedIn: 'root' })
+export class DataService {
+  private _schema = new BehaviorSubject<{columns: string[], vehicle_col: string | null}>({
+    columns: FIXED_FIELDS,
+    vehicle_col: 'Vehicle'
+  });
+  private _activeSheet = new BehaviorSubject<string>('default');
+  private _sheets = new BehaviorSubject<SheetInfo[]>([{ name: 'default', vehicle_count: 0 }]);
+
+  schema$ = this._schema.asObservable();
+  activeSheet$ = this._activeSheet.asObservable();
+  sheets$ = this._sheets.asObservable();
+
+  constructor(private http: HttpClient) {
+    this._schema.next({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' });
+    this.loadSchema();
+    this.loadSheets();
+  }
+
+  get activeSheet(): string {
+    return this._activeSheet.getValue();
+  }
+
+  setActiveSheet(name: string) {
+    this._activeSheet.next(name);
+  }
+
+  loadSchema() {
+    this.http.get<any>(`${API}/schema`).subscribe({
+      next: (s) => this._schema.next(s),
+      error: () => this._schema.next({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' })
+    });
+  }
+
+  loadSheets(): Observable<any> {
+    const obs = this.http.get<any>(`${API}/sheets`);
+    obs.subscribe({
+      next: (res) => this._sheets.next(res.sheets || []),
+      error: () => {}
+    });
+    return obs;
+  }
+
+  createSheet(name: string): Observable<any> {
+    return this.http.post<any>(`${API}/sheets`, { name }).pipe(
+      tap(() => this.loadSheets())
+    );
+  }
+
+  deleteSheet(name: string): Observable<any> {
+    return this.http.delete<any>(`${API}/sheets/${encodeURIComponent(name)}`).pipe(
+      tap(() => {
+        if (this.activeSheet === name) this.setActiveSheet('default');
+        this.loadSheets();
+      })
+    );
+  }
+
+  uploadFile(file: File, sheetName?: string): Observable<any> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('sheet_name', sheetName ?? this.activeSheet);
+    return this.http.post<any>(`${API}/upload`, form).pipe(
+      tap(() => {
+        this._schema.next({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' });
+        this.loadSheets();
+      })
+    );
+  }
+
+  searchVehicle(vn: string, sheet?: string): Observable<any> {
+    const s = sheet ?? this.activeSheet;
+    return this.http.get<any>(`${API}/search/${encodeURIComponent(vn)}?sheet=${encodeURIComponent(s)}`);
+  }
+
+  getVehicle(vn: string, sheet?: string): Observable<any> {
+    const s = sheet ?? this.activeSheet;
+    return this.http.get<any>(`${API}/vehicles/${encodeURIComponent(vn)}?sheet=${encodeURIComponent(s)}`);
+  }
+
+  getDashboardStats(sheet?: string): Observable<any> {
+    const s = encodeURIComponent(sheet ?? this.activeSheet);
+    return this.http.get<any>(`${API}/dashboard/stats?sheet=${s}`);
+  }
+
+  saveVehicle(payload: any): Observable<any> {
+    return this.http.post<any>(`${API}/vehicles`, {
+      ...payload,
+      sheet_name: payload.sheet_name ?? this.activeSheet
+    }).pipe(tap(() => this.loadSheets()));
+  }
+
+  exportUrl(sheet?: string): string {
+    const s = encodeURIComponent(sheet ?? this.activeSheet);
+    return `${API}/export?sheet=${s}`;
+  }
+}

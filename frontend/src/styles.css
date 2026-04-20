@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #0B0B0B;
+  color: #F5F5F5;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #141414; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #EF4444; }
+
+.btn-red {
+  background: #EF4444;
+  color: #fff;
+  border-radius: 10px;
+  font-weight: 700;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.btn-red:hover {
+  background: #DC2626;
+  box-shadow: 0 0 16px rgba(239,68,68,0.35);
+  transform: translateY(-1px);
+}
+
+.card {
+  background: #141414;
+  border: 1px solid #262626;
+  border-radius: 14px;
+}
+
+.input-field {
+  background: #0B0B0B;
+  border: 1px solid #262626;
+  color: #F5F5F5;
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+.input-field:focus {
+  outline: none;
+  border-color: #EF4444;
+}
+
+.red-glow:hover {
+  box-shadow: 0 0 14px rgba(239,68,68,0.3);
+}
