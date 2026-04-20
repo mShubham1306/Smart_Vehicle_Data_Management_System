@@ -5,14 +5,14 @@
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist/pr_2/browser"
+        "distDir": "dist/frontend/browser"
       }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/frontend/dist/pr_2/browser/$1",
+      "dest": "/frontend/dist/frontend/browser/$1",
       "continue": true
     },
     {
@@ -20,7 +20,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/frontend/dist/pr_2/browser/index.html"
+      "dest": "/frontend/dist/frontend/browser/index.html"
     }
   ]
 }
