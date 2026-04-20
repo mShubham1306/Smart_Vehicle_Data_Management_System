@@ -11,16 +11,11 @@
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "dest": "/frontend/dist/frontend/browser/$1",
-      "continue": true
-    },
-    {
       "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/frontend/dist/frontend/browser/index.html"
+      "dest": "/index.html"
     }
   ]
 }
