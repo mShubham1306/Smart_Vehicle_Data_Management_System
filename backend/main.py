@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import uvicorn
+import traceback
 from database import init_db
 from api import router as api_router
 from auth import auth_router
@@ -23,6 +25,16 @@ app.include_router(api_router, prefix="/api", tags=["data"])
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    tb = traceback.format_exc()
+    print(f"UNHANDLED ERROR: {exc}\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": tb}
+    )
 
 
 @app.get("/")
