@@ -6,621 +6,433 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   styles: [`
-    :host { display: block; }
+    :host { display: block; font-family: Arial, Helvetica, sans-serif; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    .ins-doc {
-      background: #ffffff;
-      color: #1a1a1a;
-      font-family: Arial, Helvetica, sans-serif;
+    /* ── Download Button ── */
+    .dl-section {
+      display: flex;
+      justify-content: center;
+      padding: 16px 0 12px 0;
+    }
+    .btn-dl {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 40px;
+      background: linear-gradient(135deg, #1565c0, #0d47a1);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 800;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(21,101,192,0.45);
+      transition: all 0.2s;
+      letter-spacing: 0.4px;
+      font-family: Arial, sans-serif;
+    }
+    .btn-dl:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgba(21,101,192,0.55);
+    }
+    .btn-dl:active:not(:disabled) { transform: translateY(0); }
+    .btn-dl:disabled { opacity: 0.55; cursor: not-allowed; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { width:15px; height:15px; border-radius:50%; border:2.5px solid rgba(255,255,255,0.3); border-top-color:#fff; animation:spin 0.8s linear infinite; display:inline-block; flex-shrink:0; }
+
+    /* ══════ DOCUMENT ══════ */
+    .doc {
+      background: #fff;
+      color: #111;
       width: 100%;
       max-width: 860px;
       margin: 0 auto;
-      box-shadow: 0 4px 32px rgba(0,0,0,0.18);
-      border: 1px solid #c8c8c8;
-      box-sizing: border-box;
+      border: 1.5px solid #999;
+      font-family: Arial, Helvetica, sans-serif;
     }
 
-    /* ── Header ── */
-    .doc-header {
+    /* ── HEADER ── */
+    .hdr {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 20px 8px 20px;
-      border-bottom: 2px solid #1a1a1a;
-      background: #ffffff;
+      padding: 12px 20px 10px 20px;
+      border-bottom: 2.5px solid #111;
+      background: #fff;
     }
-    .brand-left { display: flex; flex-direction: column; gap: 2px; }
-    .brand-logo {
-      display: flex;
-      align-items: center;
-      gap: 0;
-    }
-    .logo-i {
-      font-size: 2.4rem;
-      font-weight: 900;
-      font-style: italic;
-      color: #d0021b;
-      line-height: 1;
-      margin-right: 3px;
-    }
-    .logo-icici {
-      font-size: 1.9rem;
-      font-weight: 900;
-      color: #1a1a8c;
-      letter-spacing: -1px;
-      line-height: 1;
-    }
-    .logo-chevron {
-      font-size: 1.4rem;
-      color: #1a1a8c;
-      font-weight: 900;
-      margin: 0 1px;
-    }
-    .logo-lombard {
-      font-size: 1.9rem;
-      font-weight: 900;
-      color: #1a1a8c;
-      letter-spacing: -1px;
-      line-height: 1;
-    }
-    .brand-tagline {
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 4px;
-      color: #1a1a1a;
-      padding-top: 2px;
-      padding-left: 2px;
-      text-align: center;
-    }
-    .brand-tagline span { margin: 0 3px; color: #1a1a1a; }
-    .brand-right {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px;
-    }
-    .bike-emoji {
-      font-size: 3.5rem;
-      line-height: 1;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.15);
-    }
-    .two-wheeler-badge {
-      font-size: 0.75rem;
-      font-weight: 800;
-      color: #1a74bb;
-      letter-spacing: 1px;
-      text-align: right;
-    }
+    .logo-block { display: flex; flex-direction: column; gap: 4px; }
+    .logo-row { display: flex; align-items: center; gap: 0; }
+    /* Italic red "i" */
+    .li { font-size: 3rem; font-weight: 900; font-style: italic; color: #cc0000; line-height: 1; margin-right: 2px; }
+    /* "ICICI" in dark blue */
+    .licici { font-size: 2.2rem; font-weight: 900; color: #00237a; letter-spacing: -1.5px; line-height: 1; }
+    /* chevron */
+    .lchev { font-size: 1.6rem; font-weight: 900; color: #00237a; margin: 0 1px; line-height: 1; }
+    /* "Lombard" */
+    .llomb { font-size: 2.2rem; font-weight: 900; color: #00237a; letter-spacing: -1px; line-height: 1; }
+    /* GENERAL INSURANCE */
+    .ltag { font-size: 0.8rem; font-weight: 700; letter-spacing: 5px; color: #111; text-align: center; padding-top: 3px; }
+    .ltag span { margin: 0 6px; }
+    /* Right: bike + text */
+    .hdr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .bike-img { width: 160px; height: 100px; object-fit: contain; }
+    .tw-txt { font-size: 0.85rem; font-weight: 900; color: #1565c0; letter-spacing: 0.5px; text-transform: uppercase; }
 
-    /* ── Title Bar ── */
-    .doc-title-bar {
-      background: #ffffff;
+    /* ── TITLE ── */
+    .title-bar {
+      border-bottom: 1px solid #999;
+      padding: 7px 16px;
       text-align: center;
-      padding: 7px 20px;
-      border-bottom: 1px solid #b0b0b0;
+      background: #fff;
     }
-    .doc-title-bar p {
-      font-size: 0.78rem;
-      font-weight: 800;
-      color: #c8501a;
-      letter-spacing: 0.5px;
-      margin: 0;
-      text-transform: uppercase;
-    }
-
-    /* ── Two-column detail sections ── */
-    .detail-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid #b0b0b0;
-    }
-    .detail-col {
-      padding: 0;
-    }
-    .detail-col:first-child {
-      border-right: 1px solid #b0b0b0;
-    }
-    .detail-col-header {
-      background: #d6e4f7;
-      text-align: center;
-      padding: 5px 10px;
-      font-size: 0.72rem;
-      font-weight: 800;
-      letter-spacing: 1px;
-      color: #1a1a1a;
-      border-bottom: 1px solid #b0b0b0;
-      text-transform: uppercase;
-    }
-    .detail-row {
-      display: grid;
-      grid-template-columns: 38% 62%;
-      padding: 4px 10px;
-      min-height: 24px;
-      align-items: start;
-    }
-    .detail-row:not(:last-child) {
-      border-bottom: 1px solid #e8e8e8;
-    }
-    .detail-label {
-      font-size: 0.68rem;
-      font-weight: 700;
-      color: #1a1a1a;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
-      padding-top: 1px;
-    }
-    .detail-value {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #1a1a1a;
-      word-break: break-word;
-      padding-top: 1px;
-    }
-
-    /* ── Premium Section ── */
-    .premium-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid #b0b0b0;
-    }
-    .premium-left {
-      border-right: 1px solid #b0b0b0;
-    }
-    .premium-header-left {
-      background: #d6e4f7;
-      text-align: center;
-      padding: 5px 10px;
-      font-size: 0.72rem;
-      font-weight: 800;
-      letter-spacing: 1px;
-      color: #1a1a1a;
-      border-bottom: 1px solid #b0b0b0;
-      text-transform: uppercase;
-    }
-    .premium-right {
-      display: flex;
-      flex-direction: column;
-    }
-    .total-prem-header {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      align-items: center;
-      background: #d6e4f7;
-      border-bottom: 1px solid #b0b0b0;
-    }
-    .total-prem-label {
-      padding: 5px 10px;
-      font-size: 0.72rem;
-      font-weight: 800;
-      color: #1a1a1a;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .total-prem-amount {
-      background: #e87722;
-      color: #fff;
-      padding: 5px 14px;
+    .title-bar p {
       font-size: 0.82rem;
-      font-weight: 800;
-      white-space: nowrap;
-    }
-    .prem-row {
-      display: grid;
-      grid-template-columns: 60% 40%;
-      padding: 4px 10px;
-      align-items: start;
-      border-bottom: 1px solid #e8e8e8;
-    }
-    .prem-label {
-      font-size: 0.68rem;
-      font-weight: 700;
-      color: #1a1a1a;
+      font-weight: 900;
+      color: #d4500e;
+      letter-spacing: 0.4px;
       text-transform: uppercase;
-    }
-    .prem-value {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #1a1a1a;
-      text-align: right;
-    }
-    .idv-row {
-      display: grid;
-      grid-template-columns: 60% 40%;
-      padding: 4px 10px;
-      align-items: start;
-      border-bottom: 1px solid #e8e8e8;
-    }
-    .idv-label {
-      font-size: 0.68rem;
-      font-weight: 700;
-      color: #1a1a1a;
-      text-transform: uppercase;
-    }
-    .idv-value {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #1a1a1a;
-      text-align: right;
     }
 
-    /* ── Tagline ── */
-    .tagline-bar {
-      background: #cce0f5;
+    /* ── TWO-COL SECTIONS ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #999; }
+    .col { }
+    .col:first-child { border-right: 1px solid #999; }
+    .col-hd {
+      background: #cfe2f3;
       text-align: center;
-      padding: 6px 20px;
-      border-bottom: 1px solid #b0b0b0;
-    }
-    .tagline-bar p {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: #1a1a8c;
-      margin: 0;
-      font-style: italic;
-    }
-
-    /* ── Net/GST rows ── */
-    .net-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 5px 20px;
-      border-bottom: 1px solid #e0e0e0;
-    }
-    .net-row .net-label {
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: #444;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .net-row .net-value {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #1a1a1a;
-    }
-
-    /* ── Total Row (yellow) ── */
-    .total-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 7px 20px;
-      background: #ffd700;
-      border-bottom: 1px solid #b0b0b0;
-    }
-    .total-row .total-label {
-      font-size: 0.78rem;
+      padding: 6px 10px;
+      font-size: 0.75rem;
       font-weight: 900;
-      color: #1a1a1a;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      color: #111;
+      border-bottom: 1px solid #999;
     }
-    .total-row .total-value {
-      font-size: 0.88rem;
+    .dr { display: grid; grid-template-columns: 40% 60%; padding: 4px 10px; min-height: 24px; align-items: start; }
+    .dr:not(:last-child) { border-bottom: 1px solid #e0e0e0; }
+    .dl { font-size: 0.7rem; font-weight: 700; color: #111; text-transform: uppercase; letter-spacing: 0.1px; padding-top: 1px; }
+    .dv { font-size: 0.73rem; font-weight: 600; color: #111; word-break: break-word; padding-top: 1px; }
+    .dv.bold { font-weight: 900; font-size: 0.77rem; }
+
+    /* ── PREMIUM SECTION ── */
+    .prem { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #999; }
+    .pl { border-right: 1px solid #999; }
+    .pr { display: flex; flex-direction: column; }
+    .pl-hd {
+      background: #cfe2f3;
+      text-align: center;
+      padding: 6px 10px;
+      font-size: 0.75rem;
       font-weight: 900;
-      color: #1a1a1a;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #111;
+      border-bottom: 1px solid #999;
     }
+    .prow { display: grid; grid-template-columns: 58% 42%; padding: 5px 10px; border-bottom: 1px solid #e0e0e0; }
+    .prow:last-child { border-bottom: none; }
+    .pl-l { font-size: 0.7rem; font-weight: 700; color: #111; text-transform: uppercase; }
+    .pl-v { font-size: 0.73rem; font-weight: 600; color: #111; }
+    /* Right side */
+    .tot-head { display: grid; grid-template-columns: 1fr auto; align-items: stretch; background: #cfe2f3; border-bottom: 1px solid #999; }
+    .tot-lbl { padding: 6px 10px; font-size: 0.73rem; font-weight: 900; color: #111; display: flex; align-items: center; }
+    .tot-amt { background: #e07020; color: #fff; padding: 6px 16px; font-size: 0.9rem; font-weight: 900; display: flex; align-items: center; white-space: nowrap; }
+    .idv-row { display: grid; grid-template-columns: 58% 42%; padding: 5px 10px; border-bottom: 1px solid #e0e0e0; }
+    .idv-row:last-child { border-bottom: none; }
+    .idv-l { font-size: 0.7rem; font-weight: 700; color: #111; text-transform: uppercase; }
+    .idv-v { font-size: 0.73rem; font-weight: 600; color: #111; text-align: right; }
 
-    /* ── Warning Footer ── */
-    .warning-footer {
-      background: #e87722;
-      padding: 7px 20px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .warning-footer p {
-      font-size: 0.72rem;
-      font-weight: 700;
-      color: #ffffff;
-      margin: 0;
-    }
-    .warning-icon {
-      font-size: 0.9rem;
-      flex-shrink: 0;
-    }
+    /* ── TAGLINE ── */
+    .tagline { background: #cfe2f3; text-align: center; padding: 7px 16px; border-bottom: 1px solid #999; }
+    .tagline p { font-size: 0.85rem; font-weight: 700; color: #00237a; font-style: italic; }
 
-    /* ── Download Button (outside doc) ── */
-    .download-wrap {
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      margin-top: 16px;
-      flex-wrap: wrap;
-    }
-    .btn-download {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 28px;
-      border-radius: 10px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-    .btn-pdf {
-      background: #1a74bb;
-      color: #fff;
-      box-shadow: 0 4px 14px rgba(26,116,187,0.35);
-    }
-    .btn-pdf:hover { background: #155fa0; transform: translateY(-1px); }
-    .btn-pdf:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    /* ── NET/GST rows ── */
+    .ngrow { display: flex; justify-content: space-between; align-items: center; padding: 6px 20px; border-bottom: 1px solid #e0e0e0; background: #fff; }
+    .ng-l { font-size: 0.7rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.3px; }
+    .ng-v { font-size: 0.73rem; font-weight: 600; color: #111; }
 
-    @media (max-width: 640px) {
-      .detail-grid { grid-template-columns: 1fr; }
-      .detail-col:first-child { border-right: none; border-bottom: 1px solid #b0b0b0; }
-      .premium-grid { grid-template-columns: 1fr; }
-      .premium-left { border-right: none; border-bottom: 1px solid #b0b0b0; }
-      .doc-header { flex-direction: column; gap: 8px; align-items: flex-start; }
-      .brand-right { align-items: flex-start; }
+    /* ── TOTAL ── */
+    .total-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 20px; background: #ffd700; border-bottom: 1px solid #999; }
+    .tr-l { font-size: 0.85rem; font-weight: 900; color: #111; text-transform: uppercase; letter-spacing: 0.5px; }
+    .tr-v { font-size: 1rem; font-weight: 900; color: #111; }
+
+    /* ── WARNING ── */
+    .warn { background: #e07020; padding: 8px 20px; display: flex; align-items: center; gap: 8px; }
+    .warn-icon { font-size: 1rem; flex-shrink: 0; }
+    .warn p { font-size: 0.75rem; font-weight: 700; color: #fff; }
+
+    /* Mobile */
+    @media (max-width: 580px) {
+      .two-col { grid-template-columns: 1fr; }
+      .col:first-child { border-right: none; border-bottom: 1px solid #999; }
+      .prem { grid-template-columns: 1fr; }
+      .pl { border-right: none; border-bottom: 1px solid #999; }
+      .hdr { flex-direction: column; gap: 8px; align-items: flex-start; }
+      .hdr-right { align-items: flex-start; }
+      .bike-img { width: 120px; height: 75px; }
     }
   `],
   template: `
-    <div class="download-wrap" *ngIf="data">
-      <button class="btn-download btn-pdf" (click)="downloadPDF()" [disabled]="generating">
-        <span *ngIf="!generating">⬇ Download PDF</span>
-        <span *ngIf="generating" style="display:flex;align-items:center;gap:6px">
-          <span style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;animation:spin 0.8s linear infinite;display:inline-block"></span>
-          Generating…
-        </span>
+    <!-- ► DOWNLOAD BUTTON — fully visible, always on top -->
+    <div class="dl-section" *ngIf="data">
+      <button class="btn-dl" (click)="downloadPDF()" [disabled]="generating">
+        <ng-container *ngIf="!generating">
+          <span>⬇</span> Download Insurance PDF
+        </ng-container>
+        <ng-container *ngIf="generating">
+          <span class="spin"></span> Generating PDF…
+        </ng-container>
       </button>
     </div>
 
-    <div #docRef class="ins-doc" *ngIf="data" id="insurance-doc-print">
+    <!-- ► THE DOCUMENT (captured for PDF) -->
+    <div #docRoot class="doc" *ngIf="data" id="ins-doc-main">
 
-      <!-- ═══════════════ HEADER ═══════════════ -->
-      <div class="doc-header">
-        <div class="brand-left">
-          <div class="brand-logo">
-            <span class="logo-i">i</span>
-            <span class="logo-icici">ICICI</span>
-            <span class="logo-chevron">⟨</span>
-            <span class="logo-lombard">Lombard</span>
+      <!-- ════ HEADER ════ -->
+      <div class="hdr">
+        <!-- Logo Left -->
+        <div class="logo-block">
+          <div class="logo-row">
+            <span class="li">i</span>
+            <span class="licici">ICICI</span>
+            <span class="lchev">❮</span>
+            <span class="llomb">Lombard</span>
           </div>
-          <div class="brand-tagline">
-            <span>—</span> GENERAL INSURANCE <span>—</span>
-          </div>
+          <div class="ltag"><span>—</span>GENERAL INSURANCE<span>—</span></div>
         </div>
-        <div class="brand-right">
-          <div class="bike-emoji">🏍️</div>
-          <div class="two-wheeler-badge">TWO WHEELER INSURANCE</div>
-        </div>
-      </div>
-
-      <!-- ═══════════════ TITLE ═══════════════ -->
-      <div class="doc-title-bar">
-        <p>STAND ALONE OWN DAMAGE TWO WHEELER INSURANCE RENEWAL PROPOSAL</p>
-      </div>
-
-      <!-- ═══════════════ VEHICLE + CUSTOMER ═══════════════ -->
-      <div class="detail-grid">
-        <!-- Vehicle Detail -->
-        <div class="detail-col">
-          <div class="detail-col-header">Vehicle Detail</div>
-          <div class="detail-row">
-            <span class="detail-label">MAKE</span>
-            <span class="detail-value">{{ v('vehicleManufacturerName') || v('vehicleMake') || '—' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">MODEL</span>
-            <span class="detail-value">{{ v('vehicleModel') || v('model') || '—' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">VEHICLE NUMBER</span>
-            <span class="detail-value" style="font-weight:800;letter-spacing:1px">{{ vehicleNumber || '—' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">DUE DATE</span>
-            <span class="detail-value">{{ v('expiredInsuranceUpto') || '—' }}</span>
-          </div>
-        </div>
-
-        <!-- Customer Detail -->
-        <div class="detail-col">
-          <div class="detail-col-header">Customer Detail</div>
-          <div class="detail-row">
-            <span class="detail-label">NAME</span>
-            <span class="detail-value" style="font-weight:700">{{ v('ownerName') || '—' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">MOBILE NO</span>
-            <span class="detail-value">{{ v('ownerMobileNo') || '—' }}</span>
-          </div>
-          <div class="detail-row" style="align-items:start">
-            <span class="detail-label" style="padding-top:2px">ADDRESS</span>
-            <span class="detail-value" style="font-size:0.65rem;line-height:1.4">{{ v('ownerAddress') || '—' }}</span>
-          </div>
+        <!-- Bike + label Right -->
+        <div class="hdr-right">
+          <img class="bike-img" src="bike.png" alt="Two Wheeler" (error)="onBikeError($event)">
+          <span class="tw-txt">Two Wheeler Insurance</span>
         </div>
       </div>
 
-      <!-- ═══════════════ PREMIUM SECTION ═══════════════ -->
-      <div class="premium-grid">
+      <!-- ════ TITLE BAR ════ -->
+      <div class="title-bar">
+        <p>Stand Alone Own Damage Two Wheeler Insurance Renewal Proposal</p>
+      </div>
 
+      <!-- ════ VEHICLE + CUSTOMER ════ -->
+      <div class="two-col">
+
+        <!-- Vehicle -->
+        <div class="col">
+          <div class="col-hd">Vehicle Detail</div>
+          <div class="dr">
+            <span class="dl">MAKE</span>
+            <span class="dv">{{ f('vehicleManufacturerName') || f('vehicleMake') || '—' }}</span>
+          </div>
+          <div class="dr">
+            <span class="dl">MODEL</span>
+            <span class="dv">{{ f('vehicleModel') || f('model') || '—' }}</span>
+          </div>
+          <div class="dr">
+            <span class="dl">VEHICLE NUMBER</span>
+            <span class="dv bold" style="letter-spacing:1px">{{ vehicleNumber || '—' }}</span>
+          </div>
+          <div class="dr">
+            <span class="dl">DUE DATE</span>
+            <span class="dv">{{ f('expiredInsuranceUpto') || '—' }}</span>
+          </div>
+        </div>
+
+        <!-- Customer -->
+        <div class="col">
+          <div class="col-hd">Customer Detail</div>
+          <div class="dr">
+            <span class="dl">NAME</span>
+            <span class="dv bold">{{ f('ownerName') || '—' }}</span>
+          </div>
+          <div class="dr">
+            <span class="dl">MOBILE NO</span>
+            <span class="dv">{{ f('ownerMobileNo') || '—' }}</span>
+          </div>
+          <div class="dr" style="align-items:start">
+            <span class="dl" style="padding-top:2px">ADDRESS</span>
+            <span class="dv" style="font-size:0.66rem;line-height:1.5">{{ f('ownerAddress') || '—' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ PREMIUM SECTION ════ -->
+      <div class="prem">
         <!-- Left: Premium Schedule -->
-        <div class="premium-left">
-          <div class="premium-header-left">Premium Schedule</div>
-          <div class="prem-row">
-            <span class="prem-label">BASIC OD PREMIUM</span>
-            <span class="prem-value">{{ v('basicODPremium') || v('od_premium') || v('basic_od') || computeBasicOD() }}</span>
+        <div class="pl">
+          <div class="pl-hd">Premium Schedule</div>
+          <div class="prow">
+            <span class="pl-l">Basic OD Premium</span>
+            <span class="pl-v">{{ f('basicODPremium') || f('basic_od') || calcBasicOD() }}</span>
           </div>
-          <div class="prem-row">
-            <span class="prem-label">NO CLAIM BONUS</span>
-            <span class="prem-value">{{ v('noClaimBonus') || v('ncb') || v('no_claim_bonus') || computeNCB() }}</span>
+          <div class="prow">
+            <span class="pl-l">No Claim Bonus</span>
+            <span class="pl-v">{{ f('noClaimBonus') || f('ncb') || calcNCB() }}</span>
           </div>
-          <div class="prem-row">
-            <span class="prem-label">ZERO DEP PREMIUM</span>
-            <span class="prem-value">{{ v('zeroDepPremium') || v('zero_dep') || v('zeroDep') || computeZeroDep() }}</span>
+          <div class="prow">
+            <span class="pl-l">Zero Dep Premium</span>
+            <span class="pl-v">{{ f('zeroDepPremium') || f('zero_dep') || calcZeroDep() }}</span>
           </div>
-          <div class="prem-row" style="border-bottom:none">
-            <span class="prem-label">WITH ADD ON PREMIUM</span>
-            <span class="prem-value">{{ v('addOnPremium') || v('add_on_premium') || v('withAddOnPremium') || computeAddOn() }}</span>
+          <div class="prow">
+            <span class="pl-l">With Add On Premium</span>
+            <span class="pl-v">{{ f('addOnPremium') || f('withAddOnPremium') || calcAddOn() }}</span>
           </div>
         </div>
-
-        <!-- Right: Total Summary -->
-        <div class="premium-right">
-          <div class="total-prem-header">
-            <span class="total-prem-label">Total Premium</span>
-            <span class="total-prem-amount">₹ {{ formatAmount(v('saleAmount') || v('totalPremium') || v('total_premium') || '0') }}</span>
+        <!-- Right: Total -->
+        <div class="pr">
+          <div class="tot-head">
+            <span class="tot-lbl">Total Premium</span>
+            <span class="tot-amt">₹ {{ fmtAmt(f('saleAmount') || f('totalPremium') || '0') }}</span>
           </div>
           <div class="idv-row">
-            <span class="idv-label">INSURE DECLARED VALUE (IDV)</span>
-            <span class="idv-value">{{ v('idv') || v('IDV') || v('insuredDeclaredValue') || v('saleAmount') || '—' }}</span>
+            <span class="idv-l">Insure Declared Value (IDV)</span>
+            <span class="idv-v">{{ f('idv') || f('IDV') || f('insuredDeclaredValue') || f('saleAmount') || '—' }}</span>
           </div>
-          <div class="idv-row" style="border-bottom:none">
-            <span class="idv-label">TENURE</span>
-            <span class="idv-value">{{ v('tenure') || v('policyTenure') || '1 Yr' }}</span>
+          <div class="idv-row">
+            <span class="idv-l">Tenure</span>
+            <span class="idv-v">{{ f('tenure') || '1 Yr' }}</span>
           </div>
         </div>
-
       </div>
 
-      <!-- ═══════════════ TAGLINE ═══════════════ -->
-      <div class="tagline-bar">
+      <!-- ════ TAGLINE ════ -->
+      <div class="tagline">
         <p>Your Peace of Mind : Zero Depreciation, Unlimited Claims!</p>
       </div>
 
-      <!-- ═══════════════ NET / GST ROWS ═══════════════ -->
-      <div class="net-row">
-        <span class="net-label">NET PREMIUM</span>
-        <span class="net-value">Rs. {{ computeNetPremium() }}</span>
+      <!-- ════ NET / GST ════ -->
+      <div class="ngrow">
+        <span class="ng-l">NET PREMIUM</span>
+        <span class="ng-v">Rs. {{ calcNet() }}</span>
       </div>
-      <div class="net-row">
-        <span class="net-label">GST 18%</span>
-        <span class="net-value">Rs. {{ computeGST() }}</span>
+      <div class="ngrow">
+        <span class="ng-l">GST 18%</span>
+        <span class="ng-v">Rs. {{ calcGST() }}</span>
       </div>
 
-      <!-- ═══════════════ TOTAL ROW ═══════════════ -->
+      <!-- ════ TOTAL PAYABLE ════ -->
       <div class="total-row">
-        <span class="total-label">TOTAL PREMIUM PAYABLE</span>
-        <span class="total-value">Rs. {{ formatAmount(v('saleAmount') || v('totalPremium') || '0') }}</span>
+        <span class="tr-l">Total Premium Payable</span>
+        <span class="tr-v">Rs. {{ fmtAmt(f('saleAmount') || f('totalPremium') || '0') }}</span>
       </div>
 
-      <!-- ═══════════════ WARNING FOOTER ═══════════════ -->
-      <div class="warning-footer">
-        <span class="warning-icon">⚠</span>
+      <!-- ════ WARNING ════ -->
+      <div class="warn">
+        <span class="warn-icon">⚠</span>
         <p>If you have taken any claim in the last policy year, please inform us immediately.</p>
       </div>
 
     </div>
-
-    <style>
-      @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
   `
 })
 export class InsuranceDocComponent implements OnChanges {
   @Input() data: any = null;
   @Input() vehicleNumber: string = '';
-  @ViewChild('docRef') docRef!: ElementRef;
+  @ViewChild('docRoot') docRoot!: ElementRef<HTMLElement>;
 
   generating = false;
 
-  ngOnChanges(changes: SimpleChanges) {}
+  ngOnChanges(_c: SimpleChanges) {}
 
-  v(field: string): string {
+  /** Safe field getter — returns '' for null/nan/none values */
+  f(key: string): string {
     if (!this.data) return '';
-    const val = this.data[field];
-    if (!val || val === 'nan' || val === 'None' || val === '-') return '';
-    return String(val).trim();
+    const v = this.data[key];
+    if (v === undefined || v === null) return '';
+    const s = String(v).trim();
+    if (['', 'nan', 'none', 'null', 'n/a', 'na', '-'].includes(s.toLowerCase())) return '';
+    return s;
   }
 
-  formatAmount(raw: string): string {
-    const n = parseFloat(raw.replace(/[^0-9.]/g, ''));
-    if (isNaN(n)) return raw || '—';
+  onBikeError(e: Event) {
+    (e.target as HTMLImageElement).style.display = 'none';
+  }
+
+  fmtAmt(raw: string): string {
+    const n = parseFloat(String(raw || '').replace(/[^0-9.]/g, ''));
+    if (isNaN(n) || n === 0) return '—';
     return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  private getTotal(): number {
-    const raw = this.v('saleAmount') || this.v('totalPremium') || this.v('total_premium') || '0';
-    const n = parseFloat(raw.replace(/[^0-9.]/g, ''));
+  private total(): number {
+    const n = parseFloat(String(this.f('saleAmount') || this.f('totalPremium') || '0').replace(/[^0-9.]/g, ''));
     return isNaN(n) ? 0 : n;
   }
 
-  computeNetPremium(): string {
-    const netField = this.v('netPremium') || this.v('net_premium');
-    if (netField) return this.formatAmount(netField);
-    const total = this.getTotal();
-    if (!total) return '—';
-    // Net = Total / 1.18 (reverse GST)
-    return Math.round(total / 1.18).toLocaleString('en-IN');
+  calcNet(): string {
+    const ff = this.f('netPremium') || this.f('net_premium');
+    if (ff) return this.fmtAmt(ff);
+    const t = this.total(); if (!t) return '—';
+    return Math.round(t / 1.18).toLocaleString('en-IN');
   }
 
-  computeGST(): string {
-    const gstField = this.v('gst') || this.v('gstAmount') || this.v('gst_amount');
-    if (gstField) return this.formatAmount(gstField);
-    const total = this.getTotal();
-    if (!total) return '—';
-    return Math.round(total - total / 1.18).toLocaleString('en-IN');
+  calcGST(): string {
+    const ff = this.f('gstAmount') || this.f('gst');
+    if (ff) return this.fmtAmt(ff);
+    const t = this.total(); if (!t) return '—';
+    return Math.round(t - t / 1.18).toLocaleString('en-IN');
   }
 
-  computeBasicOD(): string {
-    const total = this.getTotal();
-    if (!total) return '—';
-    return Math.round(total * 0.557).toLocaleString('en-IN');
-  }
+  calcBasicOD(): string  { const t = this.total(); return t ? Math.round(t * 0.557).toLocaleString('en-IN') : '—'; }
+  calcNCB(): string      { const t = this.total(); return t ? Math.round(t * 0.112).toLocaleString('en-IN') : '—'; }
+  calcZeroDep(): string  { const t = this.total(); return t ? Math.round(t * 0.403).toLocaleString('en-IN') : '—'; }
+  calcAddOn(): string    { const t = this.total(); return t ? Math.round(t * 0.960).toLocaleString('en-IN') : '—'; }
 
-  computeNCB(): string {
-    const total = this.getTotal();
-    if (!total) return '—';
-    return Math.round(total * 0.112).toLocaleString('en-IN');
-  }
-
-  computeZeroDep(): string {
-    const total = this.getTotal();
-    if (!total) return '—';
-    return Math.round(total * 0.403).toLocaleString('en-IN');
-  }
-
-  computeAddOn(): string {
-    const total = this.getTotal();
-    if (!total) return '—';
-    return Math.round(total * 0.96).toLocaleString('en-IN');
-  }
-
-  async downloadPDF() {
-    if (!this.docRef?.nativeElement) return;
+  async downloadPDF(): Promise<void> {
+    const el = this.docRoot?.nativeElement;
+    if (!el || this.generating) return;
     this.generating = true;
+
     try {
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
 
-      const el: HTMLElement = this.docRef.nativeElement;
-
-      // Temporarily force a fixed white background and full width for capture
-      const prevBg = el.style.background;
-      el.style.background = '#ffffff';
+      // Preserve existing styles, then force white bg for capture
+      const prevStyles = {
+        bg: el.style.backgroundColor,
+        boxShadow: el.style.boxShadow,
+        border: el.style.border,
+      };
+      el.style.backgroundColor = '#ffffff';
+      el.style.boxShadow = 'none';
 
       const canvas = await html2canvas(el, {
-        scale: 3,
+        scale: 3,                    // 3× for crispy PDF quality
         useCORS: true,
+        allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
+        foreignObjectRendering: false,
+        imageTimeout: 15000,
         width: el.scrollWidth,
         height: el.scrollHeight,
       });
 
-      el.style.background = prevBg;
+      // Restore
+      el.style.backgroundColor = prevStyles.bg;
+      el.style.boxShadow = prevStyles.boxShadow;
+      el.style.border = prevStyles.border;
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdfW = 210; // A4 width mm
-      const pxPerMm = canvas.width / pdfW;
-      const pdfH = canvas.height / pxPerMm;
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+
+      // A4 width = 210mm, compute height proportionally
+      const pdfW = 210;
+      const pdfH = Math.ceil((canvas.height / canvas.width) * pdfW);
 
       const pdf = new jsPDF({
         orientation: pdfH > pdfW ? 'portrait' : 'landscape',
         unit: 'mm',
         format: [pdfW, pdfH],
+        compress: true,
       });
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
-      const filename = `Insurance_${this.vehicleNumber || 'Document'}_${new Date().toISOString().slice(0,10)}.pdf`;
-      pdf.save(filename);
-    } catch (err) {
-      console.error('PDF generation failed', err);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
+
+      const fname = `Insurance_${(this.vehicleNumber || 'Document').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      pdf.save(fname);
+
+    } catch (err: any) {
+      console.error('[InsuranceDoc] PDF error:', err);
+      alert('Could not generate PDF. Please try again.\n' + (err?.message || ''));
     } finally {
       this.generating = false;
     }

@@ -115,11 +115,17 @@ async def get_schema(current_user: Dict = Depends(get_current_user)):
 async def upload_file(
     file: UploadFile = File(...),
     sheet_name: str = Form("default"),
-    current_user: Dict = Depends(require_admin)
+    current_user: Dict = Depends(get_current_user)
 ):
     uid = current_user["id"]
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
     try:
-        sheet_name = clean(sheet_name) or "default"
+        # Workers can only upload to their assigned sheet
+        if role == "worker":
+            sheet_name = assigned_sheet
+        else:
+            sheet_name = clean(sheet_name) or "default"
         content = await file.read()
         filename = file.filename.lower()
         if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
@@ -276,9 +282,15 @@ async def list_vehicles(page: int = 1, limit: int = 50,
 
 @router.get("/dashboard/stats")
 async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
-                              current_user: Dict = Depends(require_admin)):
+                              current_user: Dict = Depends(get_current_user)):
     uid = current_user["id"]
-    sheet = clean(sheet or "default")
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
+    # Workers always see their assigned sheet only
+    if role == "worker":
+        sheet = assigned_sheet
+    else:
+        sheet = clean(sheet or "default")
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
 
     total_vehicles = await vehicles_collection.count_documents(base_query)
@@ -390,9 +402,14 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
 
 @router.get("/export")
 async def export_vehicles(sheet: Optional[str] = Query("default"),
-                          current_user: Dict = Depends(require_admin)):
+                          current_user: Dict = Depends(get_current_user)):
     uid = current_user["id"]
-    sheet = clean(sheet or "default")
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
+    if role == "worker":
+        sheet = assigned_sheet
+    else:
+        sheet = clean(sheet or "default")
     cursor = vehicles_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0})
     records = await cursor.to_list(length=10000)
     excel_bytes = services.export_to_excel(records)

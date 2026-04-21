@@ -2,6 +2,7 @@ import { Component, OnInit, AfterViewInit, OnDestroy, ElementRef, ViewChild } fr
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DataService, SheetInfo } from '../data.service';
+import { AuthService } from '../auth.service';
 import { HttpClientModule } from '@angular/common/http';
 import { Subscription } from 'rxjs';
 
@@ -18,62 +19,73 @@ declare const Chart: any;
            SHEET SELECTOR STRIP
       ══════════════════════════════════════════ -->
       <div class="rounded-2xl mb-6 overflow-hidden" style="background:#141414; border:1px solid #262626">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4"
-          style="border-bottom:1px solid #262626">
-          <div class="flex items-center gap-2">
+        <!-- Admin: full sheet switcher -->
+        <ng-container *ngIf="isAdmin">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4"
+            style="border-bottom:1px solid #262626">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">📊</span>
+              <div>
+                <p class="text-xs font-bold text-textLight">Dashboard Sheet</p>
+                <p class="text-[10px] text-textGray">Analytics shown for the selected sheet</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div *ngIf="showNewSheet" class="flex items-center gap-2">
+                <input type="text" [(ngModel)]="newSheetName" (keyup.enter)="createSheet()"
+                  placeholder="Sheet name…"
+                  class="input-field px-3 py-2 text-sm w-36 sm:w-44" style="height:36px">
+                <button (click)="createSheet()" [disabled]="creatingSheet"
+                  class="btn-red px-4 py-2 text-xs font-bold whitespace-nowrap disabled:opacity-50"
+                  style="height:36px">
+                  <span *ngIf="!creatingSheet">✓ Create</span>
+                  <span *ngIf="creatingSheet" class="flex items-center gap-1">
+                    <span class="w-3 h-3 rounded-full border-2 border-white/20 border-t-white animate-spin"></span>
+                  </span>
+                </button>
+                <button (click)="cancelNewSheet()" class="px-3 py-2 text-xs text-textGray hover:text-textLight" style="height:36px">✕</button>
+              </div>
+              <button *ngIf="!showNewSheet" (click)="showNewSheet=true"
+                class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-textGray hover:text-textLight transition-all"
+                style="background:rgba(255,255,255,0.04); border:1px solid #333; height:36px">
+                <span class="text-sm leading-none">+</span> New Sheet
+              </button>
+              <button (click)="loadStats()" class="px-3 py-2 rounded-xl text-xs text-textGray hover:text-textLight transition-all"
+                style="background:rgba(255,255,255,0.04); border:1px solid #333; height:36px" title="Refresh">🔄</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 px-4 py-3 overflow-x-auto" style="scrollbar-width:none">
+            <button *ngFor="let sh of sheets"
+              (click)="selectSheet(sh.name)"
+              class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0"
+              [style.background]="activeSheet === sh.name ? '#EF4444' : 'rgba(255,255,255,0.04)'"
+              [style.color]="activeSheet === sh.name ? '#fff' : '#A1A1AA'"
+              [style.border]="activeSheet === sh.name ? '1px solid rgba(239,68,68,0.4)' : '1px solid #282828'"
+              [style.box-shadow]="activeSheet === sh.name ? '0 0 12px rgba(239,68,68,0.25)' : 'none'">
+              <span>{{ sh.name === 'default' ? '📂' : '📄' }}</span>
+              <span>{{ sh.name === 'default' ? 'Default' : sh.name }}</span>
+              <span class="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                [style.background]="activeSheet === sh.name ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)'"
+                [style.color]="activeSheet === sh.name ? '#fff' : '#71717A'">
+                {{ sh.vehicle_count }}
+              </span>
+            </button>
+            <div *ngIf="!sheets.length" class="text-xs text-textGray px-2">Loading sheets…</div>
+          </div>
+          <div *ngIf="sheetError" class="px-5 pb-3 text-xs font-semibold" style="color:#EF4444">⚠️ {{ sheetError }}</div>
+        </ng-container>
+        <!-- Worker: assigned sheet badge -->
+        <ng-container *ngIf="!isAdmin">
+          <div class="flex items-center gap-3 px-5 py-4">
             <span class="text-lg">📊</span>
             <div>
-              <p class="text-xs font-bold text-textLight">Dashboard Sheet</p>
-              <p class="text-[10px] text-textGray">Analytics shown for the selected sheet</p>
+              <p class="text-xs font-bold text-textLight">Your Dashboard</p>
+              <p class="text-[10px]" style="color:#60a5fa">Sheet: <strong>{{ activeSheet }}</strong></p>
             </div>
+            <button (click)="loadStats()" class="ml-auto px-3 py-2 rounded-xl text-xs text-textGray hover:text-textLight transition-all"
+              style="background:rgba(255,255,255,0.04); border:1px solid #333; height:36px" title="Refresh">🔄</button>
           </div>
-          <!-- New sheet button -->
-          <div class="flex items-center gap-2">
-            <div *ngIf="showNewSheet" class="flex items-center gap-2">
-              <input type="text" [(ngModel)]="newSheetName" (keyup.enter)="createSheet()"
-                placeholder="Sheet name…"
-                class="input-field px-3 py-2 text-sm w-36 sm:w-44" style="height:36px">
-              <button (click)="createSheet()" [disabled]="creatingSheet"
-                class="btn-red px-4 py-2 text-xs font-bold whitespace-nowrap disabled:opacity-50"
-                style="height:36px">
-                <span *ngIf="!creatingSheet">✓ Create</span>
-                <span *ngIf="creatingSheet" class="flex items-center gap-1">
-                  <span class="w-3 h-3 rounded-full border-2 border-white/20 border-t-white animate-spin"></span>
-                </span>
-              </button>
-              <button (click)="cancelNewSheet()" class="px-3 py-2 text-xs text-textGray hover:text-textLight" style="height:36px">✕</button>
-            </div>
-            <button *ngIf="!showNewSheet" (click)="showNewSheet=true"
-              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-textGray hover:text-textLight transition-all"
-              style="background:rgba(255,255,255,0.04); border:1px solid #333; height:36px">
-              <span class="text-sm leading-none">+</span> New Sheet
-            </button>
-            <button (click)="loadStats()" class="px-3 py-2 rounded-xl text-xs text-textGray hover:text-textLight transition-all"
-              style="background:rgba(255,255,255,0.04); border:1px solid #333; height:36px" title="Refresh">
-              🔄
-            </button>
-          </div>
-        </div>
-        <!-- Sheet tabs -->
-        <div class="flex items-center gap-2 px-4 py-3 overflow-x-auto" style="scrollbar-width:none">
-          <button *ngFor="let sh of sheets"
-            (click)="selectSheet(sh.name)"
-            class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0"
-            [style.background]="activeSheet === sh.name ? '#EF4444' : 'rgba(255,255,255,0.04)'"
-            [style.color]="activeSheet === sh.name ? '#fff' : '#A1A1AA'"
-            [style.border]="activeSheet === sh.name ? '1px solid rgba(239,68,68,0.4)' : '1px solid #282828'"
-            [style.box-shadow]="activeSheet === sh.name ? '0 0 12px rgba(239,68,68,0.25)' : 'none'">
-            <span>{{ sh.name === 'default' ? '📂' : '📄' }}</span>
-            <span>{{ sh.name === 'default' ? 'Default' : sh.name }}</span>
-            <span class="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-              [style.background]="activeSheet === sh.name ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)'"
-              [style.color]="activeSheet === sh.name ? '#fff' : '#71717A'">
-              {{ sh.vehicle_count }}
-            </span>
-          </button>
-          <div *ngIf="!sheets.length" class="text-xs text-textGray px-2">Loading sheets…</div>
-        </div>
-        <div *ngIf="sheetError" class="px-5 pb-3 text-xs font-semibold" style="color:#EF4444">⚠️ {{ sheetError }}</div>
+        </ng-container>
       </div>
       <!-- END SHEET SELECTOR -->
 
@@ -320,6 +332,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   quickResult: any = null;
   quickError = '';
   loading = false;
+  isAdmin = false;
 
   // Sheet state
   sheets: SheetInfo[] = [];
@@ -333,15 +346,23 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   private subs = new Subscription();
   private chartsBuilt = false;
 
-  constructor(private ds: DataService) {}
+  constructor(private ds: DataService, private authService: AuthService) {}
 
   ngOnInit() {
-    this.subs.add(this.ds.sheets$.subscribe(sheets => { this.sheets = sheets; }));
-    this.subs.add(this.ds.activeSheet$.subscribe(sheet => {
-      this.activeSheet = sheet;
+    this.isAdmin = this.authService.isAdmin();
+    if (this.isAdmin) {
+      this.subs.add(this.ds.sheets$.subscribe(sheets => { this.sheets = sheets; }));
+      this.subs.add(this.ds.activeSheet$.subscribe(sheet => {
+        this.activeSheet = sheet;
+        this.loadStats();
+      }));
+      this.ds.loadSheets();
+    } else {
+      // Workers: locked to their assigned sheet
+      this.activeSheet = this.authService.getAssignedSheet();
+      this.ds.setActiveSheet(this.activeSheet);
       this.loadStats();
-    }));
-    this.ds.loadSheets();
+    }
   }
 
   ngAfterViewInit() { this.chartsBuilt = true; }

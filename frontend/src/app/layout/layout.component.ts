@@ -163,13 +163,18 @@ export class LayoutComponent implements OnInit, OnDestroy {
   adminNavItems = [
     { link: '/app/dashboard', icon: '📊', label: 'Dashboard' },
     { link: '/app/upload',    icon: '📂', label: 'Upload Data' },
+    { link: '/app/search',    icon: '🔍', label: 'Search Vehicle' },
+    { link: '/app/entry',     icon: '✏️', label: 'Data Entry' },
     { link: '/app/admin',     icon: '👥', label: 'Manage Workers' },
   ];
 
   commonNavItems = [
-    { link: '/app/search', icon: '🔍', label: 'Search Vehicle' },
-    { link: '/app/entry',  icon: '✏️', label: 'Data Entry' },
+    { link: '/app/dashboard', icon: '📊', label: 'Dashboard' },
+    { link: '/app/upload',    icon: '📂', label: 'Upload Data' },
+    { link: '/app/search',    icon: '🔍', label: 'Search Vehicle' },
+    { link: '/app/entry',     icon: '✏️', label: 'Data Entry' },
   ];
+
 
   private meta: Record<string, {title:string;sub:string}> = {
     '/app/dashboard': { title:'Dashboard',       sub:'Overview of your vehicle database' },
