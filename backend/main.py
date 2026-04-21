@@ -1,11 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 import traceback
 from database import init_db, users_collection
 from api import router as api_router
-from auth import auth_router
+from auth import auth_router, get_current_user, verify_password, create_access_token
+from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from bson import ObjectId
+from typing import Dict, Any, Optional
+from auth import decode_token, bearer_scheme
 
 
 app = FastAPI(title="Smart Vehicle Insurance System API")
@@ -21,6 +26,53 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(api_router, prefix="/api", tags=["data"])
+
+
+@app.post("/api/auth/promote-admin")
+async def promote_admin(
+    payload: Dict[str, Any],
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
+):
+    """
+    Self-promotion endpoint: allows a logged-in user to upgrade their own account to admin.
+    Requires their current password as confirmation.
+    This is a bootstrap endpoint for the first admin setup.
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    token_data = decode_token(credentials.credentials)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+
+    password = str(payload.get("password", "")).strip()
+    if not password:
+        raise HTTPException(status_code=400, detail="Password required for confirmation.")
+
+    user = await users_collection.find_one({"_id": ObjectId(token_data["sub"])})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if not verify_password(password, user["password"]):
+        raise HTTPException(status_code=403, detail="Incorrect password.")
+
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"role": "admin"}}
+    )
+    # Return a new token with admin role
+    token = create_access_token(
+        str(user["_id"]), user["username"], "admin",
+        user.get("assigned_sheet", "default")
+    )
+    return {
+        "message": "Account promoted to admin successfully.",
+        "token": token,
+        "user": {
+            "id": str(user["_id"]),
+            "username": user["username"],
+            "role": "admin",
+            "assigned_sheet": user.get("assigned_sheet", "default")
+        }
+    }
 
 
 async def migrate_user_roles():

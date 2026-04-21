@@ -155,5 +155,17 @@ export class DataService {
     const s = encodeURIComponent(sheet ?? this.activeSheet);
     return `${API}/export?sheet=${s}`;
   }
-}
 
+  /** Returns the actual column names stored in a sheet (scans real records) */
+  getSheetColumns(sheet?: string): Observable<any> {
+    const s = encodeURIComponent(sheet ?? this.activeSheet);
+    return this.http.get<any>(`${API}/sheets/${s}/columns`).pipe(
+      catchError(() => of({ columns: FIXED_FIELDS }))
+    );
+  }
+
+  /** Promote current user account to admin (requires password confirmation) */
+  promoteToAdmin(password: string): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/auth/promote-admin`, { password });
+  }
+}
