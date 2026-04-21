@@ -11,6 +11,8 @@ const USER_KEY = 'smartinsure_user';
 export interface User {
   id: string;
   username: string;
+  role: 'admin' | 'worker';
+  assigned_sheet?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -18,12 +20,10 @@ export class AuthService {
   private _currentUser = new BehaviorSubject<User | null>(this.getStoredUser());
   currentUser$ = this._currentUser.asObservable();
 
-  // Lazy reference to DataService — avoids circular DI at construction time
   private _dataService: any = null;
 
   constructor(private http: HttpClient, private router: Router) {}
 
-  /** Called by DataService itself once created, to avoid circular injection */
   setDataService(ds: any) {
     this._dataService = ds;
   }
@@ -36,6 +36,19 @@ export class AuthService {
     return !!this.getToken();
   }
 
+  isAdmin(): boolean {
+    const u = this._currentUser.getValue();
+    return u?.role === 'admin';
+  }
+
+  getRole(): string {
+    return this._currentUser.getValue()?.role ?? 'worker';
+  }
+
+  getAssignedSheet(): string {
+    return this._currentUser.getValue()?.assigned_sheet ?? 'default';
+  }
+
   getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
   }
@@ -44,15 +57,16 @@ export class AuthService {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     this._currentUser.next(user);
-    // Trigger full data reload now that we have a valid token
     if (this._dataService) {
       this._dataService.refresh();
     }
   }
 
   private getStoredUser(): User | null {
-    const data = localStorage.getItem(USER_KEY);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = localStorage.getItem(USER_KEY);
+      return data ? JSON.parse(data) : null;
+    } catch { return null; }
   }
 
   login(payload: any): Observable<any> {
@@ -82,4 +96,3 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 }
-

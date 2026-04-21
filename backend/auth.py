@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from motor.motor_asyncio import AsyncIOMotorCollection
 from database import users_collection
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
@@ -16,7 +15,7 @@ auth_router = APIRouter()
 
 JWT_SECRET    = os.getenv("JWT_SECRET", "smartinsure-fallback-secret-change-me")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "3650"))  # ~10 years — effectively never expires
+JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "3650"))  # ~10 years
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -33,11 +32,13 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain[:72].encode('utf-8'), hashed.encode('utf-8'))
 
 
-def create_access_token(user_id: str, username: str) -> str:
+def create_access_token(user_id: str, username: str, role: str = "worker", assigned_sheet: Optional[str] = None) -> str:
     expire = datetime.utcnow() + timedelta(days=JWT_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "username": username,
+        "role": role,
+        "assigned_sheet": assigned_sheet,
         "exp": expire,
         "iat": datetime.utcnow(),
     }
@@ -53,7 +54,7 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
 
 
 # ─────────────────────────────────────────────────────────────
-# Dependency — injects current user into every protected endpoint
+# Dependencies
 # ─────────────────────────────────────────────────────────────
 
 async def get_current_user(
@@ -64,7 +65,18 @@ async def get_current_user(
     payload = decode_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token. Please log in again.")
-    return {"id": payload["sub"], "username": payload.get("username", "")}
+    return {
+        "id": payload["sub"],
+        "username": payload.get("username", ""),
+        "role": payload.get("role", "worker"),
+        "assigned_sheet": payload.get("assigned_sheet", None),
+    }
+
+
+async def require_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return current_user
 
 
 # ─────────────────────────────────────────────────────────────
@@ -91,20 +103,26 @@ async def register(payload: Dict[str, Any]):
     if existing:
         raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
 
+    # First user ever registered becomes admin; all subsequent are workers
+    total_users = await users_collection.count_documents({})
+    role = "admin" if total_users == 0 else "worker"
+
     hashed = hash_password(password)
     result = await users_collection.insert_one({
         "username": username,
         "password": hashed,
+        "role": role,
+        "assigned_sheet": "default",
         "created_at": datetime.utcnow(),
     })
 
     user_id = str(result.inserted_id)
-    token = create_access_token(user_id, username)
+    token = create_access_token(user_id, username, role, "default")
 
     return {
         "message": "Account created successfully.",
         "token": token,
-        "user": {"id": user_id, "username": username},
+        "user": {"id": user_id, "username": username, "role": role, "assigned_sheet": "default"},
     }
 
 
@@ -121,12 +139,14 @@ async def login(payload: Dict[str, Any]):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     user_id = str(user["_id"])
-    token = create_access_token(user_id, username)
+    role = user.get("role", "worker")
+    assigned_sheet = user.get("assigned_sheet", "default")
+    token = create_access_token(user_id, username, role, assigned_sheet)
 
     return {
         "message": "Login successful.",
         "token": token,
-        "user": {"id": user_id, "username": username},
+        "user": {"id": user_id, "username": username, "role": role, "assigned_sheet": assigned_sheet},
     }
 
 

@@ -1,8 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { DataService, FIXED_FIELDS } from '../data.service';
+import { InsuranceDocComponent } from '../insurance-doc/insurance-doc.component';
+import { AuthService } from '../auth.service';
+import { Subscription } from 'rxjs';
 
 const LABELS: Record<string, string> = {
   'Sr. No.':'Sr. No.','Vehicle':'Vehicle Number','engineNum':'Engine Number',
@@ -24,12 +27,12 @@ const ICONS: Record<string,string> = {
 @Component({
   selector: 'app-search',
   standalone: true,
-  imports: [CommonModule, FormsModule, HttpClientModule],
+  imports: [CommonModule, FormsModule, HttpClientModule, InsuranceDocComponent],
   template: `
     <div style="font-family:'Inter',sans-serif">
       <div class="mb-8">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Search Vehicle</h1>
-        <p class="text-sm text-textGray mt-1">Enter a vehicle plate number to retrieve all insurance and ownership records.</p>
+        <p class="text-sm text-textGray mt-1">Enter a vehicle plate number to retrieve the insurance document.</p>
       </div>
 
       <!-- Search Bar -->
@@ -62,35 +65,66 @@ const ICONS: Record<string,string> = {
       </div>
 
       <!-- Result -->
-      <div *ngIf="result && !loading" class="rounded-2xl overflow-hidden" style="background:#141414; border:1px solid #262626">
-        <!-- Header -->
-        <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-          style="background:linear-gradient(135deg,rgba(239,68,68,0.08),transparent); border-bottom:1px solid #262626">
-          <div class="flex items-center gap-4">
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-              style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); box-shadow:0 0 20px rgba(239,68,68,0.15)">🚗</div>
-            <div>
-              <p class="text-[10px] text-textGray uppercase tracking-widest font-semibold mb-1">Vehicle Number</p>
-              <h2 class="text-2xl font-extrabold font-mono tracking-widest text-textLight">{{ result.vehicle_number }}</h2>
-            </div>
-          </div>
-          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold w-fit"
-            style="background:rgba(239,68,68,0.1); color:#EF4444; border:1px solid rgba(239,68,68,0.2)">
-            <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span> RECORD FOUND
-          </span>
+      <div *ngIf="result && !loading">
+
+        <!-- View Toggle -->
+        <div class="flex items-center gap-2 mb-5">
+          <button (click)="viewMode='document'"
+            class="px-5 py-2 rounded-xl text-sm font-bold transition-all"
+            [style.background]="viewMode==='document' ? '#EF4444' : 'rgba(255,255,255,0.05)'"
+            [style.color]="viewMode==='document' ? '#fff' : '#A1A1AA'"
+            [style.border]="viewMode==='document' ? '1px solid rgba(239,68,68,0.4)' : '1px solid #333'">
+            📄 Document View
+          </button>
+          <button *ngIf="isAdmin" (click)="viewMode='card'"
+            class="px-5 py-2 rounded-xl text-sm font-bold transition-all"
+            [style.background]="viewMode==='card' ? '#EF4444' : 'rgba(255,255,255,0.05)'"
+            [style.color]="viewMode==='card' ? '#fff' : '#A1A1AA'"
+            [style.border]="viewMode==='card' ? '1px solid rgba(239,68,68,0.4)' : '1px solid #333'">
+            🗂️ Card View
+          </button>
         </div>
-        <!-- Fields -->
-        <div class="p-6">
-          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div *ngFor="let field of fixedFields"
-              [class.sm:col-span-2]="field === 'ownerAddress'"
-              class="rounded-xl p-4 transition-all hover:-translate-y-0.5"
-              style="background:#0B0B0B; border:1px solid #262626">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-sm">{{ getIcon(field) }}</span>
-                <p class="text-[10px] text-textGray uppercase tracking-wider font-semibold">{{ getLabel(field) }}</p>
+
+        <!-- ── Document View ── -->
+        <div *ngIf="viewMode==='document'" class="rounded-2xl overflow-hidden p-4 sm:p-6"
+          style="background:#1a1a1a; border:1px solid #303030">
+          <app-insurance-doc
+            [data]="result.data"
+            [vehicleNumber]="result.vehicle_number">
+          </app-insurance-doc>
+        </div>
+
+        <!-- ── Card View (admin only) ── -->
+        <div *ngIf="viewMode==='card' && isAdmin" class="rounded-2xl overflow-hidden" style="background:#141414; border:1px solid #262626">
+          <!-- Header -->
+          <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            style="background:linear-gradient(135deg,rgba(239,68,68,0.08),transparent); border-bottom:1px solid #262626">
+            <div class="flex items-center gap-4">
+              <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); box-shadow:0 0 20px rgba(239,68,68,0.15)">🚗</div>
+              <div>
+                <p class="text-[10px] text-textGray uppercase tracking-widest font-semibold mb-1">Vehicle Number</p>
+                <h2 class="text-2xl font-extrabold font-mono tracking-widest text-textLight">{{ result.vehicle_number }}</h2>
               </div>
-              <p class="text-sm font-semibold text-textLight break-words">{{ result.data[field] || '—' }}</p>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold w-fit"
+              style="background:rgba(239,68,68,0.1); color:#EF4444; border:1px solid rgba(239,68,68,0.2)">
+              <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span> RECORD FOUND
+            </span>
+          </div>
+          <!-- Fields -->
+          <div class="p-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div *ngFor="let field of allFields"
+                [class.sm:col-span-2]="field === 'ownerAddress'"
+                class="rounded-xl p-4 transition-all hover:-translate-y-0.5"
+                style="background:#0B0B0B; border:1px solid #262626">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-sm">{{ getIcon(field) }}</span>
+                  <p class="text-[10px] text-textGray uppercase tracking-wider font-semibold">{{ getLabel(field) }}</p>
+                </div>
+                <p class="text-sm font-semibold text-textLight break-words">{{ result.data[field] || '—' }}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -101,23 +135,52 @@ const ICONS: Record<string,string> = {
         <div class="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5"
           style="background:#141414; border:1px solid #262626">🔍</div>
         <p class="text-base font-bold text-textLight mb-1">Search for a Vehicle</p>
-        <p class="text-sm text-textGray max-w-xs">Enter a plate number above to retrieve all 16 insurance and ownership fields.</p>
+        <p class="text-sm text-textGray max-w-xs">Enter a plate number above to view the insurance document and all records.</p>
       </div>
     </div>
   `
 })
-export class SearchComponent {
-  query = ''; result: any = null; error = ''; loading = false;
+export class SearchComponent implements OnInit, OnDestroy {
+  query = '';
+  result: any = null;
+  error = '';
+  loading = false;
+  viewMode: 'document' | 'card' = 'document';
+  isAdmin = false;
   fixedFields = FIXED_FIELDS;
-  constructor(private ds: DataService) {}
+  allFields: string[] = [];
+  private sub = new Subscription();
+
+  constructor(private ds: DataService, private authService: AuthService) {}
+
+  ngOnInit() {
+    this.isAdmin = this.authService.isAdmin();
+    this.sub = this.authService.currentUser$.subscribe(() => {
+      this.isAdmin = this.authService.isAdmin();
+    });
+    this.allFields = [...FIXED_FIELDS];
+  }
+
+  ngOnDestroy() { this.sub.unsubscribe(); }
+
   search() {
     if (!this.query.trim()) return;
     this.loading = true; this.error = ''; this.result = null;
     this.ds.searchVehicle(this.query).subscribe({
-      next: res => { this.result = res; this.loading = false; },
+      next: res => {
+        this.result = res;
+        this.loading = false;
+        this.viewMode = 'document';
+        // Collect all keys from data for card view
+        if (res?.data) {
+          const extra = Object.keys(res.data).filter(k => !FIXED_FIELDS.includes(k));
+          this.allFields = [...FIXED_FIELDS, ...extra];
+        }
+      },
       error: err => { this.error = err.error?.detail || 'Vehicle not found.'; this.loading = false; }
     });
   }
+
   getLabel(f: string) { return LABELS[f] ?? f; }
   getIcon(f: string)  { return ICONS[f]  ?? '📄'; }
 }

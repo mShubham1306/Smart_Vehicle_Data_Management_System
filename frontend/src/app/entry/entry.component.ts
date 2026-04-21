@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { DataService, FIXED_FIELDS, SheetInfo } from '../data.service';
+import { AuthService } from '../auth.service';
 import { Subscription } from 'rxjs';
 
 const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
@@ -16,12 +17,12 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
   'vehicleModel':                 {label:'Vehicle Model',             placeholder:'e.g. Swift, i20'},
   'vehicleClass':                 {label:'Vehicle Class',             placeholder:'e.g. Private Car'},
   'fuelType':                     {label:'Fuel Type',                 placeholder:'e.g. Petrol, Diesel'},
-  'saleAmount':                   {label:'Sale Amount',               placeholder:'e.g. 500000'},
+  'saleAmount':                   {label:'Total Premium',             placeholder:'e.g. 995'},
   'ownerMobileNo':                {label:'Owner Mobile No.',          placeholder:'10-digit mobile'},
-  'vehicleManufacturerName':      {label:'Manufacturer Name',         placeholder:'e.g. Maruti Suzuki India'},
+  'vehicleManufacturerName':      {label:'Manufacturer Name',         placeholder:'e.g. Hero MotoCorp Ltd'},
   'model':                        {label:'Model',                     placeholder:'Model variant'},
-  'vehicleInsuranceCompanyName':  {label:'Insurance Company',         placeholder:'e.g. HDFC ERGO'},
-  'expiredInsuranceUpto':         {label:'Insurance Expiry',          placeholder:'DD/MM/YYYY'},
+  'vehicleInsuranceCompanyName':  {label:'Insurance Company',         placeholder:'e.g. ICICI Lombard'},
+  'expiredInsuranceUpto':         {label:'Due Date (Insurance Expiry)', placeholder:'DD/MM/YYYY'},
   'vehicleInsurancePolicyNumber': {label:'Policy Number',             placeholder:'Insurance policy number'},
 };
 
@@ -35,13 +36,16 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
       <!-- Page Header -->
       <div class="mb-6">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Data Entry</h1>
-        <p class="text-sm text-textGray mt-1">Add or update vehicle records. Select a sheet to target.</p>
+        <p class="text-sm text-textGray mt-1">
+          <span *ngIf="isAdmin">Add or update vehicle records. Select a sheet to target.</span>
+          <span *ngIf="!isAdmin">Enter vehicle records into your assigned sheet:
+            <strong class="text-primary ml-1">{{ activeSheet }}</strong>
+          </span>
+        </p>
       </div>
 
-      <!-- ══════════════════════════════════════════
-           SHEET SELECTOR STRIP
-      ══════════════════════════════════════════ -->
-      <div class="rounded-2xl mb-6 overflow-hidden" style="background:#141414; border:1px solid #262626">
+      <!-- ══ SHEET SELECTOR (Admin only) ══ -->
+      <div *ngIf="isAdmin" class="rounded-2xl mb-6 overflow-hidden" style="background:#141414; border:1px solid #262626">
         <!-- Header row -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4"
           style="border-bottom:1px solid #262626">
@@ -52,7 +56,6 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
               <p class="text-[10px] text-textGray">Data saves to the selected sheet below</p>
             </div>
           </div>
-          <!-- New sheet button -->
           <div class="flex items-center gap-2">
             <div *ngIf="showNewSheet" class="flex items-center gap-2">
               <input type="text" [(ngModel)]="newSheetName" (keyup.enter)="createSheet()"
@@ -77,7 +80,6 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
           </div>
         </div>
 
-        <!-- Sheet tabs scrollable row -->
         <div class="flex items-center gap-2 px-4 py-3 overflow-x-auto" style="scrollbar-width:none">
           <button *ngFor="let sh of sheets"
             (click)="selectSheet(sh.name)"
@@ -97,12 +99,25 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
           <div *ngIf="!sheets.length" class="text-xs text-textGray px-2">Loading sheets…</div>
         </div>
 
-        <!-- Sheet error -->
         <div *ngIf="sheetError" class="px-5 pb-3 text-xs font-semibold" style="color:#EF4444">
           ⚠️ {{ sheetError }}
         </div>
       </div>
-      <!-- END SHEET SELECTOR -->
+
+      <!-- ══ WORKER Sheet Badge ══ -->
+      <div *ngIf="!isAdmin" class="rounded-2xl mb-6 p-4" style="background:#141414; border:1px solid #262626">
+        <div class="flex items-center gap-3">
+          <span class="text-xl">📋</span>
+          <div>
+            <p class="text-xs text-textGray">You are entering data into:</p>
+            <p class="text-sm font-bold" style="color:#60a5fa">{{ activeSheet }}</p>
+          </div>
+          <span class="ml-auto text-[10px] px-2.5 py-1 rounded-full font-semibold"
+            style="background:rgba(59,130,246,0.1); color:#60a5fa; border:1px solid rgba(59,130,246,0.25)">
+            🔒 Assigned Sheet
+          </span>
+        </div>
+      </div>
 
       <!-- Lookup Strip -->
       <div class="rounded-2xl p-5 mb-6" style="background:#141414; border:1px solid #262626">
@@ -140,7 +155,6 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
 
         <!-- Form -->
         <div class="lg:col-span-2 rounded-2xl p-6 sm:p-8" style="background:#141414; border:1px solid #262626">
-          <!-- Form sheet badge -->
           <div class="flex items-center gap-2 mb-5 pb-4" style="border-bottom:1px solid #262626">
             <span class="text-xs text-textGray">Saving to sheet:</span>
             <span class="px-2.5 py-1 rounded-full text-[11px] font-bold"
@@ -170,7 +184,6 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
               </div>
             </div>
 
-            <!-- Buttons -->
             <div class="flex flex-col sm:flex-row gap-3 mt-10 pt-6" style="border-top:1px solid #262626">
               <button type="submit" [disabled]="submitting" class="btn-red px-10 py-3 text-sm disabled:opacity-50 flex-1 sm:flex-none">
                 <span class="flex items-center justify-center gap-2">
@@ -216,8 +229,8 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
             </div>
           </div>
 
-          <!-- Export -->
-          <div class="rounded-2xl p-6 relative overflow-hidden" style="background:#141414; border:1px solid #262626">
+          <!-- Export (admin only) -->
+          <div *ngIf="isAdmin" class="rounded-2xl p-6 relative overflow-hidden" style="background:#141414; border:1px solid #262626">
             <div class="absolute -top-8 -right-8 w-28 h-28 rounded-full pointer-events-none"
               style="background:rgba(239,68,68,0.06); filter:blur(20px)"></div>
             <div class="relative z-10">
@@ -235,8 +248,8 @@ const FIELD_CONFIG: Record<string, {label:string; placeholder:string}> = {
             </div>
           </div>
 
-          <!-- All Sheets summary -->
-          <div class="rounded-2xl p-6" style="background:#141414; border:1px solid #262626">
+          <!-- All Sheets summary (admin only) -->
+          <div *ngIf="isAdmin" class="rounded-2xl p-6" style="background:#141414; border:1px solid #262626">
             <h3 class="text-sm font-bold text-textLight mb-4">🗂️ All Sheets</h3>
             <div class="space-y-2">
               <div *ngFor="let sh of sheets"
@@ -268,7 +281,6 @@ export class EntryComponent implements OnInit, OnDestroy {
   submitting = false; successMsg = ''; errorMsg = '';
   lookupQuery = ''; lookupLoading = false; lookupFound = false; lookupNotFound = false;
 
-  // Sheet state
   sheets: SheetInfo[] = [];
   activeSheet = 'default';
   showNewSheet = false;
@@ -276,30 +288,37 @@ export class EntryComponent implements OnInit, OnDestroy {
   creatingSheet = false;
   sheetError = '';
   currentExportUrl = '';
+  isAdmin = false;
 
   private subs = new Subscription();
 
-  constructor(private ds: DataService) {}
+  constructor(private ds: DataService, private authService: AuthService) {}
 
   ngOnInit() {
     this.resetForm();
-    this.subs.add(this.ds.sheets$.subscribe(sheets => {
-      this.sheets = sheets;
-    }));
-    this.subs.add(this.ds.activeSheet$.subscribe(sheet => {
-      this.activeSheet = sheet;
-      this.currentExportUrl = this.ds.exportUrl(sheet);
-    }));
-    this.ds.loadSheets();
+    this.isAdmin = this.authService.isAdmin();
+
+    if (this.isAdmin) {
+      this.subs.add(this.ds.sheets$.subscribe(sheets => { this.sheets = sheets; }));
+      this.subs.add(this.ds.activeSheet$.subscribe(sheet => {
+        this.activeSheet = sheet;
+        this.currentExportUrl = this.ds.exportUrl(sheet);
+      }));
+      this.ds.loadSheets();
+    } else {
+      // Workers use their assigned sheet, locked
+      this.activeSheet = this.authService.getAssignedSheet();
+      this.currentExportUrl = '';
+      this.ds.setActiveSheet(this.activeSheet);
+    }
   }
 
   ngOnDestroy() { this.subs.unsubscribe(); }
 
   selectSheet(name: string) {
+    if (!this.isAdmin) return;
     this.ds.setActiveSheet(name);
-    this.sheetError = '';
-    this.successMsg = '';
-    this.errorMsg = '';
+    this.sheetError = ''; this.successMsg = ''; this.errorMsg = '';
   }
 
   createSheet() {
@@ -307,23 +326,12 @@ export class EntryComponent implements OnInit, OnDestroy {
     if (!name) { this.sheetError = 'Please enter a sheet name.'; return; }
     this.creatingSheet = true; this.sheetError = '';
     this.ds.createSheet(name).subscribe({
-      next: () => {
-        this.creatingSheet = false;
-        this.ds.setActiveSheet(name);
-        this.cancelNewSheet();
-      },
-      error: (err) => {
-        this.creatingSheet = false;
-        this.sheetError = err.error?.detail || 'Failed to create sheet.';
-      }
+      next: () => { this.creatingSheet = false; this.ds.setActiveSheet(name); this.cancelNewSheet(); },
+      error: (err) => { this.creatingSheet = false; this.sheetError = err.error?.detail || 'Failed to create sheet.'; }
     });
   }
 
-  cancelNewSheet() {
-    this.showNewSheet = false;
-    this.newSheetName = '';
-    this.sheetError = '';
-  }
+  cancelNewSheet() { this.showNewSheet = false; this.newSheetName = ''; this.sheetError = ''; }
 
   deleteSheet(name: string) {
     if (!confirm(`Delete sheet "${name}" and ALL its vehicle records? This cannot be undone.`)) return;
@@ -358,9 +366,10 @@ export class EntryComponent implements OnInit, OnDestroy {
     const vn = (this.formValues['Vehicle']||'').replace(/ /g,'').toUpperCase().trim();
     if (!vn) { this.errorMsg = 'Vehicle Number is required.'; return; }
     this.submitting = true; this.successMsg = ''; this.errorMsg = '';
-    this.ds.saveVehicle({ vehicle_number: vn, data: {...this.formValues}, sheet_name: this.activeSheet }).subscribe({
+    const sheet = this.isAdmin ? this.activeSheet : this.authService.getAssignedSheet();
+    this.ds.saveVehicle({ vehicle_number: vn, data: {...this.formValues}, sheet_name: sheet }).subscribe({
       next: () => {
-        this.successMsg = `Vehicle ${vn} saved to sheet "${this.activeSheet}" successfully!`;
+        this.successMsg = `Vehicle ${vn} saved to sheet "${sheet}" successfully!`;
         this.submitting = false; this.lookupFound = false;
         setTimeout(() => this.successMsg = '', 4000);
       },

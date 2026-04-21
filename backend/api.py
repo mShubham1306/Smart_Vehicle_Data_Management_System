@@ -1,14 +1,15 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Query, Depends
 from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, Optional
-from database import vehicles_collection, uploads_collection, schema_collection, sheets_collection
+from database import vehicles_collection, uploads_collection, schema_collection, sheets_collection, users_collection
 import services
 from services import FIXED_FIELDS, VEHICLE_FIELD
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from datetime import datetime, timedelta
 import traceback
 from io import BytesIO
 import re
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -71,7 +72,7 @@ async def list_sheets(current_user: Dict = Depends(get_current_user)):
 
 
 @router.post("/sheets")
-async def create_sheet(payload: Dict[str, Any], current_user: Dict = Depends(get_current_user)):
+async def create_sheet(payload: Dict[str, Any], current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     name = clean(payload.get("name", ""))
     if not name:
@@ -86,7 +87,7 @@ async def create_sheet(payload: Dict[str, Any], current_user: Dict = Depends(get
 
 
 @router.delete("/sheets/{name}")
-async def delete_sheet(name: str, current_user: Dict = Depends(get_current_user)):
+async def delete_sheet(name: str, current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     if name == "default":
         raise HTTPException(status_code=400, detail='Cannot delete the "default" sheet.')
@@ -107,14 +108,14 @@ async def get_schema(current_user: Dict = Depends(get_current_user)):
 
 
 # ─────────────────────────────────────────────────────────────
-# Upload
+# Upload (admin only)
 # ─────────────────────────────────────────────────────────────
 
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     sheet_name: str = Form("default"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin)
 ):
     uid = current_user["id"]
     try:
@@ -124,7 +125,6 @@ async def upload_file(
         if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
             raise HTTPException(status_code=400, detail="Only Excel (.xlsx, .xls) and CSV files are supported.")
 
-        # Ensure sheet exists for this user
         await sheets_collection.update_one(
             {"user_id": uid, "name": sheet_name},
             {"$setOnInsert": {"user_id": uid, "name": sheet_name, "created_at": datetime.utcnow()}},
@@ -175,15 +175,27 @@ async def upload_file(
 async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
                          current_user: Dict = Depends(get_current_user)):
     uid = current_user["id"]
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
+
     v_num = vehicle_number.replace(" ", "").upper().strip()
     query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
-    if sheet:
+
+    if role == "worker":
+        # Workers can only search within their assigned sheet
+        query["sheet_name"] = assigned_sheet
+    elif sheet:
         query["sheet_name"] = clean(sheet)
+
     vehicle = await vehicles_collection.find_one(query, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail=f"No record found for vehicle number: {v_num}")
     raw_data = vehicle.get("data", {})
     structured = {field: raw_data.get(field, "") for field in FIXED_FIELDS}
+    # Include any extra fields from data that are not in FIXED_FIELDS
+    for k, v in raw_data.items():
+        if k not in structured:
+            structured[k] = v
     return {"vehicle_number": vehicle["vehicle_number"], "sheet_name": vehicle.get("sheet_name", "default"),
             "data": structured}
 
@@ -191,12 +203,19 @@ async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
 @router.post("/vehicles")
 async def create_or_update_vehicle(payload: Dict[str, Any], current_user: Dict = Depends(get_current_user)):
     uid = current_user["id"]
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
+
     vehicle_number = payload.get("vehicle_number", "").replace(" ", "").upper().strip()
     if not vehicle_number:
         raise HTTPException(status_code=400, detail="vehicle_number is required")
-    sheet_name = clean(payload.get("sheet_name", "default")) or "default"
 
-    # Ensure sheet exists
+    # Workers can only save to their assigned sheet
+    if role == "worker":
+        sheet_name = assigned_sheet
+    else:
+        sheet_name = clean(payload.get("sheet_name", "default")) or "default"
+
     await sheets_collection.update_one(
         {"user_id": uid, "name": sheet_name},
         {"$setOnInsert": {"user_id": uid, "name": sheet_name, "created_at": datetime.utcnow()}},
@@ -217,10 +236,17 @@ async def create_or_update_vehicle(payload: Dict[str, Any], current_user: Dict =
 async def get_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
                       current_user: Dict = Depends(get_current_user)):
     uid = current_user["id"]
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
+
     v_num = vehicle_number.replace(" ", "").upper().strip()
     query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
-    if sheet:
+
+    if role == "worker":
+        query["sheet_name"] = assigned_sheet
+    elif sheet:
         query["sheet_name"] = clean(sheet)
+
     vehicle = await vehicles_collection.find_one(query, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail=f"No record found for: {v_num}")
@@ -233,7 +259,7 @@ async def get_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
 @router.get("/vehicles")
 async def list_vehicles(page: int = 1, limit: int = 50,
                         sheet: Optional[str] = Query("default"),
-                        current_user: Dict = Depends(get_current_user)):
+                        current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     sheet = clean(sheet or "default")
     query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
@@ -245,12 +271,12 @@ async def list_vehicles(page: int = 1, limit: int = 50,
 
 
 # ─────────────────────────────────────────────────────────────
-# Dashboard Stats (user + sheet scoped)
+# Dashboard Stats (admin only)
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/dashboard/stats")
 async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
-                              current_user: Dict = Depends(get_current_user)):
+                              current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     sheet = clean(sheet or "default")
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
@@ -295,7 +321,6 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         if fuel and fuel not in ('', '-', 'N/A'):
             fuel_counts[fuel] = fuel_counts.get(fuel, 0) + 1
 
-    # Monthly uploads for this user + sheet
     uploads_cursor = uploads_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).sort("timestamp", 1)
     all_uploads = await uploads_cursor.to_list(length=1000)
     for u in all_uploads:
@@ -360,12 +385,12 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
 
 
 # ─────────────────────────────────────────────────────────────
-# Export (user + sheet scoped)
+# Export (admin only)
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/export")
 async def export_vehicles(sheet: Optional[str] = Query("default"),
-                          current_user: Dict = Depends(get_current_user)):
+                          current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     sheet = clean(sheet or "default")
     cursor = vehicles_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0})
@@ -377,3 +402,41 @@ async def export_vehicles(sheet: Optional[str] = Query("default"),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={safe_name}_export.xlsx"}
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# Admin — User Management
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/admin/users")
+async def list_users(current_user: Dict = Depends(require_admin)):
+    cursor = users_collection.find({}, {"_id": 1, "username": 1, "role": 1, "assigned_sheet": 1, "created_at": 1})
+    users = await cursor.to_list(length=500)
+    result = []
+    for u in users:
+        result.append({
+            "id": str(u["_id"]),
+            "username": u.get("username", ""),
+            "role": u.get("role", "worker"),
+            "assigned_sheet": u.get("assigned_sheet", "default"),
+            "created_at": u.get("created_at", "").isoformat() if u.get("created_at") else "",
+        })
+    return {"users": result}
+
+
+@router.patch("/admin/users/{user_id}")
+async def update_user(user_id: str, payload: Dict[str, Any], current_user: Dict = Depends(require_admin)):
+    updates: Dict[str, Any] = {}
+    if "role" in payload and payload["role"] in ("admin", "worker"):
+        updates["role"] = payload["role"]
+    if "assigned_sheet" in payload:
+        updates["assigned_sheet"] = str(payload["assigned_sheet"]).strip() or "default"
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update.")
+    try:
+        result = await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user ID.")
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"message": "User updated.", "updates": updates}

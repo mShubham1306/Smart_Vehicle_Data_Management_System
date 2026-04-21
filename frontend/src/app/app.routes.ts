@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './auth.guard';
+import { authGuard, adminGuard } from './auth.guard';
 import { LoginComponent } from './login/login.component';
 
 export const routes: Routes = [
@@ -10,10 +10,29 @@ export const routes: Routes = [
     loadComponent: () => import('./layout/layout.component').then(m => m.LayoutComponent),
     canActivate: [authGuard],
     children: [
-      { path: 'dashboard', loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent) },
-      { path: 'upload', loadComponent: () => import('./upload/upload.component').then(m => m.UploadComponent) },
-      { path: 'search', loadComponent: () => import('./search/search.component').then(m => m.SearchComponent) },
-      { path: 'entry', loadComponent: () => import('./entry/entry.component').then(m => m.EntryComponent) },
+      {
+        path: 'dashboard',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent)
+      },
+      {
+        path: 'upload',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./upload/upload.component').then(m => m.UploadComponent)
+      },
+      {
+        path: 'search',
+        loadComponent: () => import('./search/search.component').then(m => m.SearchComponent)
+      },
+      {
+        path: 'entry',
+        loadComponent: () => import('./entry/entry.component').then(m => m.EntryComponent)
+      },
+      {
+        path: 'admin',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./admin/admin.component').then(m => m.AdminComponent)
+      },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]
   },
