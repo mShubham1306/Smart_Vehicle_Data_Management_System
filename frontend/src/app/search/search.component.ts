@@ -195,30 +195,29 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   getLabel(f: string) { return this.LABELS[f] ?? f.replace(/([A-Z])/g, ' $1').trim(); }
 
-  /** Download the rendered insurance document as PDF */
+  /** Download ONLY the insurance document as PDF — no app chrome */
   async downloadPDF() {
     if (this.generating) return;
     this.generating = true;
-
-    // Switch to document view first
     this.viewMode = 'document';
-
-    // Wait one tick for angular to render
-    await new Promise(r => setTimeout(r, 300));
+    // Wait for Angular to render the document view
+    await new Promise(r => setTimeout(r, 400));
 
     try {
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
 
-      // Target: the insurance document element inside InsuranceDocComponent
-      const wrapper = document.getElementById('doc-wrapper');
-      const docEl = wrapper?.querySelector('.doc') as HTMLElement ?? wrapper;
-
+      // Target ONLY the white insurance document element (id set in InsuranceDocComponent)
+      const docEl = document.getElementById('ins-doc-main') as HTMLElement;
       if (!docEl) {
-        alert('Document not ready. Please try again.');
+        alert('Insurance document not ready. Please wait a moment and try again.');
         this.generating = false;
         return;
       }
+
+      // Temporarily force white background, font color black for clean capture
+      const prevBg = docEl.style.background;
+      docEl.style.background = '#ffffff';
 
       const canvas = await html2canvas(docEl, {
         scale: 3,
@@ -226,12 +225,14 @@ export class SearchComponent implements OnInit, OnDestroy {
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
-        width: docEl.scrollWidth,
-        height: docEl.scrollHeight,
+        windowWidth: docEl.scrollWidth,
+        windowHeight: docEl.scrollHeight,
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
-      const pdfW = 210;
+      docEl.style.background = prevBg; // restore
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.97);
+      const pdfW = 210; // A4 width in mm
       const pdfH = Math.ceil((canvas.height / canvas.width) * pdfW);
 
       const pdf = new jsPDF({
@@ -242,11 +243,12 @@ export class SearchComponent implements OnInit, OnDestroy {
       });
 
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
-      const fname = `Insurance_${(this.result?.vehicle_number || 'Document').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      pdf.save(fname);
+      const vNum = (this.result?.vehicle_number || 'Document').replace(/\s+/g, '_');
+      pdf.save(`Insurance_${vNum}_${new Date().toISOString().slice(0, 10)}.pdf`);
+
     } catch (err: any) {
       console.error('[PDF]', err);
-      alert('PDF generation failed. Please try again.\n' + (err?.message || ''));
+      alert('PDF generation failed: ' + (err?.message || String(err)));
     } finally {
       this.generating = false;
     }
