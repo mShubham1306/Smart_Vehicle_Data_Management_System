@@ -98,6 +98,40 @@ async def delete_sheet(name: str, current_user: Dict = Depends(require_admin)):
     return {"message": f'Sheet "{name}" and {del_result.deleted_count} records deleted.'}
 
 
+@router.get("/sheets/{name}/columns")
+async def get_sheet_columns(name: str, current_user: Dict = Depends(get_current_user)):
+    """Return all unique field keys found in this sheet's vehicle data."""
+    uid = current_user["id"]
+    role = current_user.get("role", "worker")
+    assigned_sheet = current_user.get("assigned_sheet", "default")
+
+    # Workers can only read their assigned sheet's columns
+    if role == "worker":
+        name = assigned_sheet
+
+    # Sample up to 200 records to discover column names
+    cursor = vehicles_collection.find({"user_id": uid, "sheet_name": name}, {"_id": 0, "data": 1}).limit(200)
+    records = await cursor.to_list(length=200)
+
+    all_cols: dict = {}
+    for rec in records:
+        data = rec.get("data", {})
+        for k in data.keys():
+            if k not in all_cols:
+                all_cols[k] = True
+
+    # Preserve FIXED_FIELDS order first, then append extra cols
+    ordered = [f for f in FIXED_FIELDS if f in all_cols]
+    extras  = [k for k in all_cols if k not in FIXED_FIELDS]
+    columns = ordered + extras
+
+    # If sheet is empty, fall back to FIXED_FIELDS
+    if not columns:
+        columns = list(FIXED_FIELDS)
+
+    return {"sheet_name": name, "columns": columns}
+
+
 # ─────────────────────────────────────────────────────────────
 # Schema
 # ─────────────────────────────────────────────────────────────

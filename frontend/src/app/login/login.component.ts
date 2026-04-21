@@ -143,14 +143,18 @@ export class LoginComponent {
     if (!this.username || !this.password) return;
     this.error = '';
     this.loading = true;
-    const payload = { username: this.username.trim().toLowerCase(), password: this.password };
+    const basePayload = { username: this.username.trim().toLowerCase(), password: this.password };
+    // When admin checkbox is checked during REGISTER, create admin account
+    const payload = this.mode === 'register' && this.isAdminLogin
+      ? { ...basePayload, role: 'admin' }
+      : basePayload;
     const req = this.mode === 'login' ? this.authService.login(payload) : this.authService.register(payload);
     req.subscribe({
       next: (res: any) => {
         this.loading = false;
         const role = res?.user?.role ?? this.authService.getRole();
-        // If user tried to login as admin but isn't one, show error
-        if (this.isAdminLogin && role !== 'admin') {
+        // If user tried to LOGIN (not register) as admin but isn't one, show error
+        if (this.mode === 'login' && this.isAdminLogin && role !== 'admin') {
           this.authService.logout();
           this.error = 'This account does not have admin privileges. Please sign in as a regular user.';
           return;

@@ -103,9 +103,13 @@ async def register(payload: Dict[str, Any]):
     if existing:
         raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
 
-    # First user ever registered becomes admin; all subsequent are workers
+    # Determine role — explicit 'admin' request OR first-ever user
     total_users = await users_collection.count_documents({})
-    role = "admin" if total_users == 0 else "worker"
+    requested_role = str(payload.get("role", "")).lower().strip()
+    if requested_role == "admin" or total_users == 0:
+        role = "admin"
+    else:
+        role = "worker"
 
     hashed = hash_password(password)
     result = await users_collection.insert_one({

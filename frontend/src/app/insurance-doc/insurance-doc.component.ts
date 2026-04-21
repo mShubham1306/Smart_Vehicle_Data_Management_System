@@ -174,18 +174,6 @@ import { CommonModule } from '@angular/common';
     }
   `],
   template: `
-    <!-- ► DOWNLOAD BUTTON — fully visible, always on top -->
-    <div class="dl-section" *ngIf="data">
-      <button class="btn-dl" (click)="downloadPDF()" [disabled]="generating">
-        <ng-container *ngIf="!generating">
-          <span>⬇</span> Download Insurance PDF
-        </ng-container>
-        <ng-container *ngIf="generating">
-          <span class="spin"></span> Generating PDF…
-        </ng-container>
-      </button>
-    </div>
-
     <!-- ► THE DOCUMENT (captured for PDF) -->
     <div #docRoot class="doc" *ngIf="data" id="ins-doc-main">
 
