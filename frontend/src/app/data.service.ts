@@ -1,8 +1,9 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, of } from 'rxjs';
+import { tap, catchError } from 'rxjs/operators';
 import { environment } from '../environments/environment';
+import { AuthService } from './auth.service';
 
 const API = environment.apiUrl;
 
@@ -46,10 +47,29 @@ export class DataService {
   activeSheet$ = this._activeSheet.asObservable();
   sheets$ = this._sheets.asObservable();
 
-  constructor(private http: HttpClient) {
+  constructor(private http: HttpClient, private authService: AuthService) {
     this._schema.next({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' });
+    // Register this service with AuthService so it can trigger refresh after login
+    this.authService.setDataService(this);
+    // Only load data if a token already exists (returning user with valid session)
+    if (this._hasToken()) {
+      this.loadSchema();
+      this.loadSheets();
+    }
+  }
+
+  /** Call this after login/register to reload all user data with the fresh token */
+  refresh() {
     this.loadSchema();
     this.loadSheets();
+  }
+
+  private _hasToken(): boolean {
+    try {
+      return !!localStorage.getItem('smartinsure_token');
+    } catch {
+      return false;
+    }
   }
 
   get activeSheet(): string {
@@ -61,14 +81,15 @@ export class DataService {
   }
 
   loadSchema() {
-    this.http.get<any>(`${API}/schema`).subscribe({
-      next: (s) => this._schema.next(s),
-      error: () => this._schema.next({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' })
-    });
+    this.http.get<any>(`${API}/schema`).pipe(
+      catchError(() => of({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' }))
+    ).subscribe(s => this._schema.next(s));
   }
 
   loadSheets(): Observable<any> {
-    const obs = this.http.get<any>(`${API}/sheets`);
+    const obs = this.http.get<any>(`${API}/sheets`).pipe(
+      catchError(() => of({ sheets: [] }))
+    );
     obs.subscribe({
       next: (res) => this._sheets.next(res.sheets || []),
       error: () => {}
@@ -113,6 +134,11 @@ export class DataService {
     return this.http.get<any>(`${API}/vehicles/${encodeURIComponent(vn)}?sheet=${encodeURIComponent(s)}`);
   }
 
+  getVehiclesList(sheet?: string, page: number = 1, limit: number = 50): Observable<any> {
+    const s = encodeURIComponent(sheet ?? this.activeSheet);
+    return this.http.get<any>(`${API}/vehicles?sheet=${s}&page=${page}&limit=${limit}`);
+  }
+
   getDashboardStats(sheet?: string): Observable<any> {
     const s = encodeURIComponent(sheet ?? this.activeSheet);
     return this.http.get<any>(`${API}/dashboard/stats?sheet=${s}`);
@@ -130,3 +156,4 @@ export class DataService {
     return `${API}/export?sheet=${s}`;
   }
 }
+

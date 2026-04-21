@@ -18,7 +18,15 @@ export class AuthService {
   private _currentUser = new BehaviorSubject<User | null>(this.getStoredUser());
   currentUser$ = this._currentUser.asObservable();
 
+  // Lazy reference to DataService — avoids circular DI at construction time
+  private _dataService: any = null;
+
   constructor(private http: HttpClient, private router: Router) {}
+
+  /** Called by DataService itself once created, to avoid circular injection */
+  setDataService(ds: any) {
+    this._dataService = ds;
+  }
 
   get currentUser(): User | null {
     return this._currentUser.getValue();
@@ -36,6 +44,10 @@ export class AuthService {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     this._currentUser.next(user);
+    // Trigger full data reload now that we have a valid token
+    if (this._dataService) {
+      this._dataService.refresh();
+    }
   }
 
   private getStoredUser(): User | null {
@@ -70,3 +82,4 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 }
+

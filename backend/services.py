@@ -134,23 +134,14 @@ def normalize_vehicle_number(value: str) -> str:
     return str(value).replace(" ", "").upper().strip()
 
 
-def parse_and_normalize(file_bytes: bytes, filename: str, sheet_name: str = "default") -> Tuple[List[Dict], List[str], str]:
-    """
-    Parse an uploaded Excel/CSV file, map columns to fixed schema,
-    and return normalized records tagged with sheet_name.
-    Returns: (records, fixed_columns_list, vehicle_field_name)
-    """
-    if filename.endswith(".csv"):
-        df = pd.read_csv(BytesIO(file_bytes), dtype=str, keep_default_na=False)
-    else:
-        df = pd.read_excel(BytesIO(file_bytes), dtype=str, keep_default_na=False)
-
+def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
+    """Helper: process a single DataFrame and return records tagged with sheet_name."""
     # Drop fully empty rows / columns
-    df.dropna(how="all", inplace=True)
-    df.dropna(axis=1, how="all", inplace=True)
+    df = df.dropna(how="all")
+    df = df.dropna(axis=1, how="all")
 
     # Rename columns to canonical names
-    df.rename(columns=lambda c: map_column(c), inplace=True)
+    df = df.rename(columns=lambda c: map_column(str(c)))
 
     records = []
     for _, row in df.iterrows():
@@ -159,10 +150,12 @@ def parse_and_normalize(file_bytes: bytes, filename: str, sheet_name: str = "def
 
         # Get vehicle number — must exist
         raw_vnum = row_dict.get(VEHICLE_FIELD, "")
-        if not raw_vnum:
+        if not raw_vnum or raw_vnum in ("", "nan", "None", "-"):
             continue
 
         vnum = normalize_vehicle_number(raw_vnum)
+        if not vnum:
+            continue
 
         # Build data with all fixed fields (fill missing with "")
         data: Dict[str, str] = {}
@@ -179,6 +172,40 @@ def parse_and_normalize(file_bytes: bytes, filename: str, sheet_name: str = "def
             "sheet_name": sheet_name,
             "data": data,
         })
+    return records
+
+
+def parse_and_normalize(file_bytes: bytes, filename: str, sheet_name: str = "default") -> Tuple[List[Dict], List[str], str]:
+    """
+    Parse an uploaded Excel/CSV file, map columns to fixed schema,
+    and return normalized records tagged with sheet_name.
+
+    For Excel files with multiple tabs, each tab is processed separately.
+    Records from each tab get tagged as:
+      - single-sheet file  → sheet_name (the target app sheet)
+      - multi-sheet file   → sheet_name  (all tabs merged into target sheet)
+        but also individually available via tab_sheets if needed.
+
+    Returns: (records, fixed_columns_list, vehicle_field_name)
+    """
+    if filename.endswith(".csv"):
+        df = pd.read_csv(BytesIO(file_bytes), dtype=str, keep_default_na=False)
+        return _process_dataframe(df, sheet_name), FIXED_FIELDS, VEHICLE_FIELD
+
+    # Excel — read ALL sheets
+    try:
+        all_sheets: Dict[str, "pd.DataFrame"] = pd.read_excel(
+            BytesIO(file_bytes), sheet_name=None, dtype=str, keep_default_na=False
+        )
+    except Exception:
+        # Fallback: try reading as single sheet
+        df = pd.read_excel(BytesIO(file_bytes), dtype=str, keep_default_na=False)
+        return _process_dataframe(df, sheet_name), FIXED_FIELDS, VEHICLE_FIELD
+
+    records: List[Dict] = []
+    for tab_name, df in all_sheets.items():
+        tab_records = _process_dataframe(df, sheet_name)
+        records.extend(tab_records)
 
     return records, FIXED_FIELDS, VEHICLE_FIELD
 

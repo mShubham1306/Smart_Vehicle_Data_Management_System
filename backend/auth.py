@@ -16,7 +16,7 @@ auth_router = APIRouter()
 
 JWT_SECRET    = os.getenv("JWT_SECRET", "smartinsure-fallback-secret-change-me")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "3650"))  # ~10 years — effectively never expires
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
