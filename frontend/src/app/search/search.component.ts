@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
@@ -7,27 +7,18 @@ import { InsuranceDocComponent } from '../insurance-doc/insurance-doc.component'
 import { AuthService } from '../auth.service';
 import { Subscription } from 'rxjs';
 
-const LABELS: Record<string, string> = {
-  'Sr. No.':'Sr. No.','Vehicle':'Vehicle Number','engineNum':'Engine Number',
-  'chassisNum':'Chassis Number','ownerName':'Owner Name','ownerAddress':'Owner Address',
-  'vehicleMake':'Vehicle Make','vehicleModel':'Vehicle Model','vehicleClass':'Vehicle Class',
-  'fuelType':'Fuel Type','saleAmount':'Sale Amount','ownerMobileNo':'Mobile No.',
-  'vehicleManufacturerName':'Manufacturer','model':'Model',
-  'vehicleInsuranceCompanyName':'Insurance Company','expiredInsuranceUpto':'Insurance Expiry',
-  'vehicleInsurancePolicyNumber':'Policy Number',
-};
-const ICONS: Record<string,string> = {
-  'Vehicle':'🚗','engineNum':'⚙️','chassisNum':'🔩','ownerName':'👤','ownerAddress':'📍',
-  'vehicleMake':'🏭','vehicleModel':'🚙','vehicleClass':'📂','fuelType':'⛽','saleAmount':'💰',
-  'ownerMobileNo':'📱','vehicleManufacturerName':'🏗️','model':'🔖',
-  'vehicleInsuranceCompanyName':'🛡️','expiredInsuranceUpto':'📅',
-  'vehicleInsurancePolicyNumber':'📋','Sr. No.':'🔢',
-};
-
 @Component({
   selector: 'app-search',
   standalone: true,
   imports: [CommonModule, FormsModule, HttpClientModule, InsuranceDocComponent],
+  styles: [`
+    :host { display:block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .spin { width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;animation:spin 0.8s linear infinite;display:inline-block;flex-shrink:0; }
+    .btn-dl { display:inline-flex;align-items:center;gap:10px;padding:13px 36px;background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;font-size:0.9rem;font-weight:800;border:none;border-radius:12px;cursor:pointer;box-shadow:0 6px 20px rgba(21,101,192,0.45);transition:all 0.2s;font-family:'Inter',sans-serif;letter-spacing:0.3px; }
+    .btn-dl:hover:not(:disabled) { transform:translateY(-2px);box-shadow:0 10px 28px rgba(21,101,192,0.55); }
+    .btn-dl:disabled { opacity:0.55;cursor:not-allowed; }
+  `],
   template: `
     <div style="font-family:'Inter',sans-serif">
       <div class="mb-8">
@@ -64,8 +55,18 @@ const ICONS: Record<string,string> = {
         </div>
       </div>
 
-      <!-- Result -->
+      <!-- ✅ RESULT SECTION -->
       <div *ngIf="result && !loading">
+
+        <!-- ⬇ DOWNLOAD BUTTON — always visible at top of results -->
+        <div style="display:flex;justify-content:center;padding:16px 0 20px 0">
+          <button class="btn-dl" (click)="downloadPDF()" [disabled]="generating">
+            <ng-container *ngIf="!generating">⬇ Download Insurance PDF</ng-container>
+            <ng-container *ngIf="generating">
+              <span class="spin"></span> Generating PDF…
+            </ng-container>
+          </button>
+        </div>
 
         <!-- View Toggle -->
         <div class="flex items-center gap-2 mb-5">
@@ -85,29 +86,29 @@ const ICONS: Record<string,string> = {
           </button>
         </div>
 
-        <!-- ── Document View ── -->
-        <div *ngIf="viewMode==='document'" class="rounded-2xl overflow-hidden p-4 sm:p-6"
-          style="background:#1a1a1a; border:1px solid #303030">
+        <!-- Document View — the actual insurance paper -->
+        <div *ngIf="viewMode==='document'" id="doc-wrapper" style="background:#f5f5f5;padding:12px;border-radius:12px;border:1px solid #ddd">
           <app-insurance-doc
+            #docRef
             [data]="result.data"
             [vehicleNumber]="result.vehicle_number">
           </app-insurance-doc>
         </div>
 
-        <!-- ── Card View (admin only) ── -->
+        <!-- Card View (admin only) -->
         <div *ngIf="viewMode==='card' && isAdmin" class="rounded-2xl overflow-hidden" style="background:#141414; border:1px solid #262626">
           <!-- Header -->
           <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             style="background:linear-gradient(135deg,rgba(239,68,68,0.08),transparent); border-bottom:1px solid #262626">
             <div class="flex items-center gap-4">
               <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); box-shadow:0 0 20px rgba(239,68,68,0.15)">🚗</div>
+                style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25)">🚗</div>
               <div>
                 <p class="text-[10px] text-textGray uppercase tracking-widest font-semibold mb-1">Vehicle Number</p>
                 <h2 class="text-2xl font-extrabold font-mono tracking-widest text-textLight">{{ result.vehicle_number }}</h2>
               </div>
             </div>
-            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold w-fit"
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
               style="background:rgba(239,68,68,0.1); color:#EF4444; border:1px solid rgba(239,68,68,0.2)">
               <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span> RECORD FOUND
             </span>
@@ -117,12 +118,9 @@ const ICONS: Record<string,string> = {
             <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               <div *ngFor="let field of allFields"
                 [class.sm:col-span-2]="field === 'ownerAddress'"
-                class="rounded-xl p-4 transition-all hover:-translate-y-0.5"
+                class="rounded-xl p-4"
                 style="background:#0B0B0B; border:1px solid #262626">
-                <div class="flex items-center gap-2 mb-2">
-                  <span class="text-sm">{{ getIcon(field) }}</span>
-                  <p class="text-[10px] text-textGray uppercase tracking-wider font-semibold">{{ getLabel(field) }}</p>
-                </div>
+                <p class="text-[10px] text-textGray uppercase tracking-wider font-semibold mb-1">{{ getLabel(field) }}</p>
                 <p class="text-sm font-semibold text-textLight break-words">{{ result.data[field] || '—' }}</p>
               </div>
             </div>
@@ -135,21 +133,33 @@ const ICONS: Record<string,string> = {
         <div class="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5"
           style="background:#141414; border:1px solid #262626">🔍</div>
         <p class="text-base font-bold text-textLight mb-1">Search for a Vehicle</p>
-        <p class="text-sm text-textGray max-w-xs">Enter a plate number above to view the insurance document and all records.</p>
+        <p class="text-sm text-textGray max-w-xs">Enter a plate number above to view the insurance document.</p>
       </div>
     </div>
   `
 })
 export class SearchComponent implements OnInit, OnDestroy {
+  @ViewChild('docRef') docRef!: InsuranceDocComponent;
+
   query = '';
   result: any = null;
   error = '';
   loading = false;
+  generating = false;
   viewMode: 'document' | 'card' = 'document';
   isAdmin = false;
-  fixedFields = FIXED_FIELDS;
   allFields: string[] = [];
   private sub = new Subscription();
+
+  private LABELS: Record<string, string> = {
+    'Sr. No.': 'Sr. No.', 'Vehicle': 'Vehicle Number', 'engineNum': 'Engine Number',
+    'chassisNum': 'Chassis Number', 'ownerName': 'Owner Name', 'ownerAddress': 'Owner Address',
+    'vehicleMake': 'Vehicle Make', 'vehicleModel': 'Vehicle Model', 'vehicleClass': 'Vehicle Class',
+    'fuelType': 'Fuel Type', 'saleAmount': 'Sale Amount / Premium', 'ownerMobileNo': 'Mobile No.',
+    'vehicleManufacturerName': 'Manufacturer', 'model': 'Model',
+    'vehicleInsuranceCompanyName': 'Insurance Company', 'expiredInsuranceUpto': 'Insurance Expiry',
+    'vehicleInsurancePolicyNumber': 'Policy Number',
+  };
 
   constructor(private ds: DataService, private authService: AuthService) {}
 
@@ -171,16 +181,74 @@ export class SearchComponent implements OnInit, OnDestroy {
         this.result = res;
         this.loading = false;
         this.viewMode = 'document';
-        // Collect all keys from data for card view
         if (res?.data) {
           const extra = Object.keys(res.data).filter(k => !FIXED_FIELDS.includes(k));
           this.allFields = [...FIXED_FIELDS, ...extra];
         }
       },
-      error: err => { this.error = err.error?.detail || 'Vehicle not found.'; this.loading = false; }
+      error: err => {
+        this.error = err.error?.detail || 'Vehicle not found. Check the plate number and try again.';
+        this.loading = false;
+      }
     });
   }
 
-  getLabel(f: string) { return LABELS[f] ?? f; }
-  getIcon(f: string)  { return ICONS[f]  ?? '📄'; }
+  getLabel(f: string) { return this.LABELS[f] ?? f.replace(/([A-Z])/g, ' $1').trim(); }
+
+  /** Download the rendered insurance document as PDF */
+  async downloadPDF() {
+    if (this.generating) return;
+    this.generating = true;
+
+    // Switch to document view first
+    this.viewMode = 'document';
+
+    // Wait one tick for angular to render
+    await new Promise(r => setTimeout(r, 300));
+
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+
+      // Target: the insurance document element inside InsuranceDocComponent
+      const wrapper = document.getElementById('doc-wrapper');
+      const docEl = wrapper?.querySelector('.doc') as HTMLElement ?? wrapper;
+
+      if (!docEl) {
+        alert('Document not ready. Please try again.');
+        this.generating = false;
+        return;
+      }
+
+      const canvas = await html2canvas(docEl, {
+        scale: 3,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        width: docEl.scrollWidth,
+        height: docEl.scrollHeight,
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdfW = 210;
+      const pdfH = Math.ceil((canvas.height / canvas.width) * pdfW);
+
+      const pdf = new jsPDF({
+        orientation: pdfH > pdfW ? 'portrait' : 'landscape',
+        unit: 'mm',
+        format: [pdfW, pdfH],
+        compress: true,
+      });
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
+      const fname = `Insurance_${(this.result?.vehicle_number || 'Document').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      pdf.save(fname);
+    } catch (err: any) {
+      console.error('[PDF]', err);
+      alert('PDF generation failed. Please try again.\n' + (err?.message || ''));
+    } finally {
+      this.generating = false;
+    }
+  }
 }
