@@ -180,6 +180,34 @@ async def me(current_user: Dict[str, Any] = Depends(get_current_user)):
 # Password Reset (OTP Flow)
 # ─────────────────────────────────────────────────────────────
 import random
+import smtplib
+from email.mime.text import MIMEText
+
+def send_otp_email(to_email: str, otp: str) -> bool:
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASS")
+    
+    # Needs valid credentials in environment to actually send email
+    if not smtp_user or not smtp_pass:
+        return False
+        
+    msg = MIMEText(f"Your SmartInsure Password Reset OTP is: {otp}\n\nIt is valid for 15 minutes.\n\nDo not share this code with anyone.")
+    msg['Subject'] = 'SmartInsure Password Reset'
+    msg['From'] = smtp_user
+    msg['To'] = to_email
+    
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Failed to send email to {to_email}: {str(e)}")
+        return False
 
 @auth_router.post("/forgot-password")
 async def forgot_password(payload: Dict[str, Any]):
@@ -201,11 +229,20 @@ async def forgot_password(payload: Dict[str, Any]):
         {"$set": {"reset_otp": otp, "reset_otp_exp": expire_time}}
     )
     
-    # In a real app we'd email this. Here we return it so the frontend can show a "Test Mode" alert.
-    return {
-        "message": "OTP generated successfully. (Check your alerts in test mode)",
-        "dev_otp": otp
-    }
+    email_sent = False
+    if "@" in username:
+        email_sent = send_otp_email(username, otp)
+    
+    if email_sent:
+        return {
+            "message": "OTP sent to your email. Please check your inbox.",
+            "dev_otp": "" 
+        }
+    else:
+        return {
+            "message": "OTP generated. (SMTP not configured, showing inside alert in dev mode.)",
+            "dev_otp": otp
+        }
 
 
 @auth_router.post("/reset-password")
