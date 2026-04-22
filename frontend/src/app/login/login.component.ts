@@ -97,25 +97,25 @@ import { AuthService } from '../auth.service';
             <!-- Username -->
             <div class="field" *ngIf="mode !== 'reset_password' && mode !== 'forgot_password'">
               <label>Username</label>
-              <input type="text" [(ngModel)]="username" placeholder="Enter username" autocomplete="username">
+              <input type="text" [(ngModel)]="username" name="username" placeholder="Enter username" autocomplete="username">
             </div>
 
             <!-- Email (for Register & Forgot Password / Reset) -->
             <div class="field" *ngIf="mode === 'register' || mode === 'forgot_password' || mode === 'reset_password'">
               <label>Email Address</label>
-              <input type="email" [(ngModel)]="email" placeholder="Enter email" autocomplete="email" [disabled]="mode === 'reset_password'">
+              <input type="email" [(ngModel)]="email" name="email" placeholder="Enter email" autocomplete="email" [disabled]="mode === 'reset_password'">
             </div>
 
             <!-- OTP -->
             <div class="field" *ngIf="mode === 'reset_password'">
               <label>6-Digit OTP</label>
-              <input type="text" [(ngModel)]="otp" placeholder="Enter OTP from alert" autocomplete="one-time-code">
+              <input type="text" [(ngModel)]="otp" name="otp" placeholder="Enter OTP from alert" autocomplete="one-time-code">
             </div>
 
             <!-- Password -->
             <div class="field" *ngIf="mode !== 'forgot_password'">
               <label>{{ mode === 'reset_password' ? 'New Password' : 'Password' }}</label>
-              <input type="password" [(ngModel)]="password" (keyup.enter)="submit()" placeholder="••••••••" autocomplete="current-password">
+              <input type="password" [(ngModel)]="password" name="password" (keyup.enter)="submit()" placeholder="••••••••" autocomplete="current-password">
               <p *ngIf="mode==='register' || mode==='reset_password'" style="font-size:0.63rem;color:#555;margin-top:4px">Minimum 6 characters</p>
             </div>
             
@@ -125,7 +125,7 @@ import { AuthService } from '../auth.service';
 
             <!-- Submit -->
             <button class="btn-submit" [ngClass]="isAdminLogin ? 'btn-admin' : 'btn-user'"
-              [disabled]="loading || (mode === 'forgot_password' ? !email : mode === 'reset_password' ? !otp || !password : mode === 'register' ? !username || !email || !password : !username || !password)" 
+              [disabled]="isSubmitDisabled" 
               (click)="submit()">
               <span *ngIf="!loading">
                 {{ mode === 'login'
@@ -164,6 +164,15 @@ export class LoginComponent {
     if (this.authService.isLoggedIn()) {
       this.router.navigate([this.authService.isAdmin() ? '/app/dashboard' : '/app/search']);
     }
+  }
+
+  get isSubmitDisabled(): boolean {
+    if (this.loading) return true;
+    if (this.mode === 'forgot_password') return !this.email || this.email.trim() === '';
+    if (this.mode === 'reset_password') return (!this.otp || !this.password);
+    if (this.mode === 'login') return (!this.username || !this.password);
+    if (this.mode === 'register') return (!this.username || !this.email || !this.password);
+    return true;
   }
 
   submit() {
