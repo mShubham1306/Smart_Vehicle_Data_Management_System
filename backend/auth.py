@@ -96,6 +96,7 @@ async def register(payload: Dict[str, Any]):
     """Public registration — only for creating the first admin. Workers are created by admins."""
     username = str(payload.get("username", "")).strip().lower()
     password = str(payload.get("password", "")).strip()
+    email = str(payload.get("email", "")).strip().lower()
 
     if not username:
         raise HTTPException(status_code=400, detail="Username is required.")
@@ -121,10 +122,16 @@ async def register(payload: Dict[str, Any]):
         admin_id_field = None
     else:
         role = "worker"
+        
+    if role == "admin" and not email:
+        raise HTTPException(status_code=400, detail="Email is required for admin accounts.")
+    if email and "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address format.")
 
     hashed = hash_password(password)
     doc = {
         "username": username,
+        "email": email,
         "password": hashed,
         "role": role,
         "assigned_sheet": "default",
@@ -211,14 +218,17 @@ def send_otp_email(to_email: str, otp: str) -> bool:
 
 @auth_router.post("/forgot-password")
 async def forgot_password(payload: Dict[str, Any]):
-    username = str(payload.get("username", "")).strip().lower()
-    if not username:
-        raise HTTPException(status_code=400, detail="Username is required.")
+    email = str(payload.get("email", "")).strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
         
-    user = await users_collection.find_one({"username": username})
+    # Support backward compatibility if older admins used email as their username
+    user = await users_collection.find_one({
+        "$or": [{"email": email}, {"username": email}]
+    })
+    
     if not user:
-        # Don't reveal if user exists or not for security, but we need it to work
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail="No account linked to this email.")
         
     # Generate 6-digit OTP
     otp = str(random.randint(100000, 999999))
@@ -229,12 +239,10 @@ async def forgot_password(payload: Dict[str, Any]):
         {"$set": {"reset_otp": otp, "reset_otp_exp": expire_time}}
     )
     
-    email_sent = False
-    if "@" in username:
-        email_sent = send_otp_email(username, otp)
+    email_sent = send_otp_email(email, otp)
     
     if not email_sent:
-        print(f"Warning: Failed to send OTP email to {username}. SMTP might not be configured.")
+        print(f"Warning: Failed to send OTP email to {email}. SMTP might not be configured.")
         raise HTTPException(status_code=500, detail="Could not dispatch email. Please check SMTP configuration.")
 
     return {
@@ -244,17 +252,19 @@ async def forgot_password(payload: Dict[str, Any]):
 
 @auth_router.post("/reset-password")
 async def reset_password(payload: Dict[str, Any]):
-    username = str(payload.get("username", "")).strip().lower()
+    email = str(payload.get("email", "")).strip().lower()
     otp = str(payload.get("otp", "")).strip()
     new_password = str(payload.get("new_password", "")).strip()
     
-    if not username or not otp or not new_password:
-        raise HTTPException(status_code=400, detail="Username, OTP, and new password are required.")
+    if not email or not otp or not new_password:
+        raise HTTPException(status_code=400, detail="Email, OTP, and new password are required.")
         
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
         
-    user = await users_collection.find_one({"username": username})
+    user = await users_collection.find_one({
+        "$or": [{"email": email}, {"username": email}]
+    })
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
         

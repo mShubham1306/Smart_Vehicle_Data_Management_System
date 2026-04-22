@@ -95,9 +95,15 @@ import { AuthService } from '../auth.service';
             </div>
 
             <!-- Username -->
-            <div class="field" *ngIf="mode !== 'reset_password'">
+            <div class="field" *ngIf="mode !== 'reset_password' && mode !== 'forgot_password'">
               <label>Username</label>
               <input type="text" [(ngModel)]="username" placeholder="Enter username" autocomplete="username">
+            </div>
+
+            <!-- Email (for Register & Forgot Password / Reset) -->
+            <div class="field" *ngIf="mode === 'register' || mode === 'forgot_password' || mode === 'reset_password'">
+              <label>Email Address</label>
+              <input type="email" [(ngModel)]="email" placeholder="Enter email" autocomplete="email" [disabled]="mode === 'reset_password'">
             </div>
 
             <!-- OTP -->
@@ -147,6 +153,7 @@ import { AuthService } from '../auth.service';
 export class LoginComponent {
   mode: 'login' | 'register' | 'forgot_password' | 'reset_password' = 'login';
   username = '';
+  email = '';
   password = '';
   otp = '';
   error = '';
@@ -160,15 +167,16 @@ export class LoginComponent {
   }
 
   submit() {
-    if (this.mode === 'forgot_password' && !this.username) return;
+    if (this.mode === 'forgot_password' && !this.email) return;
     if (this.mode === 'reset_password' && (!this.otp || !this.password)) return;
-    if ((this.mode === 'login' || this.mode === 'register') && (!this.username || !this.password)) return;
+    if (this.mode === 'login' && (!this.username || !this.password)) return;
+    if (this.mode === 'register' && (!this.username || !this.email || !this.password)) return;
     
     this.error = '';
     this.loading = true;
 
     if (this.mode === 'forgot_password') {
-      this.authService.forgotPassword({ username: this.username.trim().toLowerCase() }).subscribe({
+      this.authService.forgotPassword({ email: this.email.trim().toLowerCase() }).subscribe({
         next: (res: any) => {
           this.loading = false;
           alert('OTP sent! Please check your email inbox (and spam folder).');
@@ -184,7 +192,7 @@ export class LoginComponent {
 
     if (this.mode === 'reset_password') {
       this.authService.resetPassword({ 
-        username: this.username.trim().toLowerCase(), 
+        email: this.email.trim().toLowerCase(), 
         otp: this.otp, 
         new_password: this.password 
       }).subscribe({
@@ -203,7 +211,11 @@ export class LoginComponent {
       return;
     }
 
-    const basePayload = { username: this.username.trim().toLowerCase(), password: this.password };
+    const basePayload: any = { username: this.username.trim().toLowerCase(), password: this.password };
+    if (this.mode === 'register') {
+      basePayload.email = this.email.trim().toLowerCase();
+    }
+    
     // When admin checkbox is checked during REGISTER, create admin account
     const payload = this.mode === 'register' && this.isAdminLogin
       ? { ...basePayload, role: 'admin' }
