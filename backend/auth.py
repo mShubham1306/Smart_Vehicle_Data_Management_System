@@ -233,16 +233,13 @@ async def forgot_password(payload: Dict[str, Any]):
     if "@" in username:
         email_sent = send_otp_email(username, otp)
     
-    if email_sent:
-        return {
-            "message": "OTP sent to your email. Please check your inbox.",
-            "dev_otp": "" 
-        }
-    else:
-        return {
-            "message": "OTP generated. (SMTP not configured, showing inside alert in dev mode.)",
-            "dev_otp": otp
-        }
+    if not email_sent:
+        print(f"Warning: Failed to send OTP email to {username}. SMTP might not be configured.")
+        raise HTTPException(status_code=500, detail="Could not dispatch email. Please check SMTP configuration.")
+
+    return {
+        "message": "OTP sent to your email. Please check your inbox (and spam folder)."
+    }
 
 
 @auth_router.post("/reset-password")

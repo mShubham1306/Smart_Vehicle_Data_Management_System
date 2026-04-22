@@ -171,7 +171,7 @@ export class LoginComponent {
       this.authService.forgotPassword({ username: this.username.trim().toLowerCase() }).subscribe({
         next: (res: any) => {
           this.loading = false;
-          alert(`(TEST MODE) Your OTP is: ${res.dev_otp}`);
+          alert('OTP sent! Please check your email inbox (and spam folder).');
           this.mode = 'reset_password';
         },
         error: (err: any) => {
