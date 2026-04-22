@@ -52,7 +52,7 @@ function labelFor(key: string): string {
       <!-- Page Header -->
       <div class="mb-6">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Data Entry</h1>
-        <p class="text-sm text-textGray mt-1">Select a sheet and fill the form to add or update records.</p>
+        <p class="text-sm text-textGray mt-1">Select a sheet — form fields auto-match the sheet's uploaded columns.</p>
       </div>
 
       <!-- Sheet Selector (visible to all) -->
@@ -215,7 +215,16 @@ export class EntryComponent implements OnInit, OnDestroy {
     for (const col of this.columns) { this.formData[col] = ''; }
   }
 
-  getLabel(key: string): string { return KNOWN_LABELS[key] ?? labelFor(key); }
+  getLabel(key: string): string {
+    if (KNOWN_LABELS[key]) return KNOWN_LABELS[key];
+    // Auto-label: convert camelCase, snake_case, PascalCase to readable words
+    return key
+      .replace(/([a-z])([A-Z])/g, '$1 $2')   // camelCase → camel Case
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') // ACRONYMWord → ACRONYM Word
+      .replace(/[_\-]+/g, ' ')               // snake_case → snake case
+      .replace(/\b\w/g, c => c.toUpperCase()) // titleCase
+      .trim();
+  }
   isWideField(key: string): boolean {
     const k = key.toLowerCase();
     return k.includes('address') || k.includes('addr') || k.includes('note') || k.includes('remark');

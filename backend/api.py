@@ -106,19 +106,24 @@ async def delete_sheet(name: str, current_user: Dict = Depends(require_admin)):
 @router.get("/sheets/{name}/columns")
 async def get_sheet_columns(name: str, current_user: Dict = Depends(get_current_user)):
     uid = _owner(current_user)
-    cursor = vehicles_collection.find({"user_id": uid, "sheet_name": name}, {"_id": 0, "data": 1}).limit(200)
-    records = await cursor.to_list(length=200)
+    # Sample up to 500 records to discover ALL column names in this sheet
+    records = await vehicles_collection.find(
+        {"user_id": uid, "sheet_name": name}, {"_id": 0, "data": 1}
+    ).limit(500).to_list(length=500)
 
     all_cols: dict = {}
     for rec in records:
         for k in rec.get("data", {}).keys():
-            if k not in all_cols:
+            # Skip junk keys
+            if k and not str(k).startswith("Unnamed") and k.lower() not in ("nan", "none", ""):
                 all_cols[k] = True
 
+    # Preserve FIXED_FIELDS order first, then any extra custom columns
     ordered = [f for f in FIXED_FIELDS if f in all_cols]
     extras  = [k for k in all_cols if k not in FIXED_FIELDS]
-    columns = ordered + extras or list(FIXED_FIELDS)
-    return {"sheet_name": name, "columns": columns}
+    columns = ordered + extras
+    # Return actual columns — empty list means sheet has no data yet (frontend shows upload prompt)
+    return {"sheet_name": name, "columns": columns, "has_data": bool(columns)}
 
 
 # ─────────────────────────────────────────────────────────────
