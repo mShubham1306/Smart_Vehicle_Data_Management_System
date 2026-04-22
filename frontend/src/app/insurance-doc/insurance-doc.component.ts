@@ -149,55 +149,13 @@ import { CommonModule } from '@angular/common';
 
         <!-- LEFT: ICICI Lombard Logo as inline SVG - pixel-perfect match -->
         <div class="logo-block">
-          <svg class="logo-svg-wrap" viewBox="0 0 280 110" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-            <defs>
-              <!-- Red gradient for the oval -->
-              <radialGradient id="redOval" cx="40%" cy="35%" r="65%">
-                <stop offset="0%" stop-color="#ff5533"/>
-                <stop offset="55%" stop-color="#cc1a00"/>
-                <stop offset="100%" stop-color="#8b0000"/>
-              </radialGradient>
-            </defs>
-
-            <!-- Red teardrop/oval shape -->
-            <ellipse cx="28" cy="38" rx="22" ry="27" fill="url(#redOval)"/>
-
-            <!-- White italic serif "i" inside oval -->
-            <text x="28" y="54" text-anchor="middle"
-              font-family="Georgia, Times New Roman, serif"
-              font-size="40" font-weight="900" font-style="italic"
-              fill="white" opacity="0.97">i</text>
-
-            <!-- ICICI text -->
-            <text x="56" y="60"
-              font-family="Arial Black, Arial, sans-serif"
-              font-size="42" font-weight="900"
-              fill="#1a2a6b" letter-spacing="-1">ICICI</text>
-
-            <!-- Chevron / left angle -->
-            <text x="178" y="60"
-              font-family="Arial Black, Arial, sans-serif"
-              font-size="32" font-weight="900"
-              fill="#1a2a6b">&#10094;</text>
-
-            <!-- Lombard text -->
-            <text x="196" y="60"
-              font-family="Arial Black, Arial, sans-serif"
-              font-size="42" font-weight="900"
-              fill="#1a2a6b" letter-spacing="-1">Lombard</text>
-
-            <!-- GENERAL INSURANCE below -->
-            <text x="140" y="85" text-anchor="middle"
-              font-family="Arial, sans-serif"
-              font-size="11" font-weight="700"
-              fill="#222" letter-spacing="4">&#x2014;GENERAL INSURANCE&#x2014;</text>
-          </svg>
+          <img class="logo-svg-wrap" src="/IMG-20260422-WA0003.jpg" alt="ICICI Lombard" style="object-fit: contain;">
         </div>
 
         <!-- RIGHT: Bike image + label -->
         <div class="hdr-right">
           <img class="bike-img"
-            src="/bike.png"
+            src="/IMG-20260422-WA0006.jpg"
             alt="Two Wheeler"
             (error)="onImgErr($event, 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Hero_Splendor_Plus_BSVI.jpg/320px-Hero_Splendor_Plus_BSVI.jpg')">
           <span class="tw-label">Two Wheeler Insurance</span>
