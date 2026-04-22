@@ -124,8 +124,8 @@ import { AuthService } from '../auth.service';
             </div>
 
             <!-- Submit -->
-            <button class="btn-submit btn-admin"
-              [disabled]="loading || (mode === 'forgot_password' ? !username : mode === 'reset_password' ? !otp || !password : !username || !password)" 
+            <button class="btn-submit" [ngClass]="isAdminLogin ? 'btn-admin' : 'btn-user'"
+              [disabled]="loading || (mode === 'forgot_password' ? !email : mode === 'reset_password' ? !otp || !password : mode === 'register' ? !username || !email || !password : !username || !password)" 
               (click)="submit()">
               <span *ngIf="!loading">
                 {{ mode === 'login'
