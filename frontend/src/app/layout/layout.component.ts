@@ -31,7 +31,7 @@ import { Subscription } from 'rxjs';
         <button (click)="goHome()" class="px-5 py-6 text-left w-full transition-all group"
           style="border-bottom:1px solid #262626" title="Go to Home">
           <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-primary rounded-xl flex items-center justify-center flex-shrink-0 transition-all group-hover:scale-105 group-hover:shadow-lg"
+            <div class="w-9 h-9 bg-primary rounded-xl flex items-center justify-center flex-shrink-0 transition-all group-hover:scale-105"
               style="box-shadow:0 0 14px rgba(239,68,68,0.4)">
               <span class="text-white font-extrabold text-sm">SI</span>
             </div>
@@ -50,7 +50,6 @@ import { Subscription } from 'rxjs';
             [style.border]="isAdmin ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(59,130,246,0.25)'">
             <span class="w-1.5 h-1.5 rounded-full" [style.background]="isAdmin ? '#ef4444' : '#60a5fa'"></span>
             {{ isAdmin ? '👑 Admin' : '👷 Worker' }}
-            <span *ngIf="!isAdmin" class="opacity-70">· {{ assignedSheet }}</span>
           </span>
         </div>
 
@@ -58,7 +57,7 @@ import { Subscription } from 'rxjs';
         <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
           <p class="text-[10px] text-textGray uppercase tracking-widest font-semibold px-3 mb-3">Navigation</p>
 
-          <!-- Admin-only items -->
+          <!-- Admin nav -->
           <ng-container *ngIf="isAdmin">
             <a *ngFor="let item of adminNavItems"
               [routerLink]="item.link"
@@ -74,19 +73,21 @@ import { Subscription } from 'rxjs';
             </a>
           </ng-container>
 
-          <!-- Items for everyone -->
-          <a *ngFor="let item of commonNavItems"
-            [routerLink]="item.link"
-            (click)="menuOpen=false"
-            class="flex items-center gap-3 px-3 py-2.5 text-textGray hover:text-textLight rounded-xl transition-all text-sm font-medium"
-            [style.background]="isActive(item.link) ? 'rgba(239,68,68,0.08)' : ''"
-            [style.border]="isActive(item.link) ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent'">
-            <span class="w-8 h-8 rounded-lg flex items-center justify-center text-base transition-colors"
-              [style.background]="isActive(item.link) ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)'">
-              {{ item.icon }}
-            </span>
-            <span [style.color]="isActive(item.link) ? '#EF4444' : ''">{{ item.label }}</span>
-          </a>
+          <!-- Worker nav (only Search + Entry) -->
+          <ng-container *ngIf="!isAdmin">
+            <a *ngFor="let item of workerNavItems"
+              [routerLink]="item.link"
+              (click)="menuOpen=false"
+              class="flex items-center gap-3 px-3 py-2.5 text-textGray hover:text-textLight rounded-xl transition-all text-sm font-medium"
+              [style.background]="isActive(item.link) ? 'rgba(239,68,68,0.08)' : ''"
+              [style.border]="isActive(item.link) ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent'">
+              <span class="w-8 h-8 rounded-lg flex items-center justify-center text-base transition-colors"
+                [style.background]="isActive(item.link) ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)'">
+                {{ item.icon }}
+              </span>
+              <span [style.color]="isActive(item.link) ? '#EF4444' : ''">{{ item.label }}</span>
+            </a>
+          </ng-container>
         </nav>
 
         <!-- User Profile & Logout -->
@@ -134,10 +135,6 @@ import { Subscription } from 'rxjs';
             <p class="text-xs text-textGray mt-0.5">{{ getSub() }}</p>
           </div>
           <div class="flex items-center gap-3">
-            <div *ngIf="!isAdmin" class="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-              style="background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2)">
-              <span class="text-xs" style="color:#60a5fa">📋 Sheet: {{ assignedSheet }}</span>
-            </div>
             <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg"
               style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2)">
               <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
@@ -157,7 +154,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
   menuOpen = false;
   user: User | null = null;
   isAdmin = false;
-  assignedSheet = 'default';
   private sub = new Subscription();
 
   adminNavItems = [
@@ -168,13 +164,11 @@ export class LayoutComponent implements OnInit, OnDestroy {
     { link: '/app/admin',     icon: '👥', label: 'Manage Workers' },
   ];
 
-  commonNavItems = [
-    { link: '/app/dashboard', icon: '📊', label: 'Dashboard' },
-    { link: '/app/upload',    icon: '📂', label: 'Upload Data' },
-    { link: '/app/search',    icon: '🔍', label: 'Search Vehicle' },
-    { link: '/app/entry',     icon: '✏️', label: 'Data Entry' },
+  // Workers can ONLY access Search and Data Entry
+  workerNavItems = [
+    { link: '/app/search', icon: '🔍', label: 'Search Vehicle' },
+    { link: '/app/entry',  icon: '✏️', label: 'Data Entry' },
   ];
-
 
   private meta: Record<string, {title:string;sub:string}> = {
     '/app/dashboard': { title:'Dashboard',       sub:'Overview of your vehicle database' },
@@ -190,25 +184,21 @@ export class LayoutComponent implements OnInit, OnDestroy {
     this.sub = this.authService.currentUser$.subscribe(u => {
       this.user = u;
       this.isAdmin = u?.role === 'admin';
-      this.assignedSheet = u?.assigned_sheet ?? 'default';
-      // Workers start at entry if they land on admin routes
-      if (u && !this.isAdmin && window.location.pathname.includes('/app/dashboard')) {
-        this.router.navigate(['/app/entry']);
+      // Workers start at entry
+      if (u && !this.isAdmin) {
+        const path = window.location.pathname;
+        const allowedForWorker = ['/app/search', '/app/entry'];
+        if (!allowedForWorker.some(p => path.startsWith(p))) {
+          this.router.navigate(['/app/entry']);
+        }
       }
     });
   }
 
   ngOnDestroy() { this.sub.unsubscribe(); }
-
   goHome() { this.router.navigate(['/']); }
-
   logout() { this.authService.logout(); }
-
-  getInitial() {
-    if (!this.user?.username) return 'U';
-    return this.user.username.charAt(0).toUpperCase();
-  }
-
+  getInitial() { return this.user?.username?.charAt(0).toUpperCase() || 'U'; }
   isActive(link: string) { return window.location.pathname.startsWith(link); }
   getTitle() { return this.meta[window.location.pathname]?.title ?? 'SmartInsure'; }
   getSub()   { return this.meta[window.location.pathname]?.sub   ?? ''; }

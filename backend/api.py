@@ -46,13 +46,19 @@ def clean(name: str) -> str:
     return (name or "").strip()
 
 
+def _owner(u: Dict) -> str:
+    """Return the effective data-owner user_id for queries.
+    Workers transparently operate on their admin's data space."""
+    return u.get("data_owner_id") or u["id"]
+
+
 # ─────────────────────────────────────────────────────────────
-# Sheet Endpoints (user-scoped)
+# Sheet Endpoints
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/sheets")
 async def list_sheets(current_user: Dict = Depends(get_current_user)):
-    uid = current_user["id"]
+    uid = _owner(current_user)
     cursor = sheets_collection.find({"user_id": uid}, {"_id": 0})
     sheets = await cursor.to_list(length=200)
     result = []
@@ -60,7 +66,6 @@ async def list_sheets(current_user: Dict = Depends(get_current_user)):
         count = await vehicles_collection.count_documents({"user_id": uid, "sheet_name": s["name"]})
         result.append({"name": s["name"], "vehicle_count": count, "created_at": s.get("created_at", "")})
     result.sort(key=lambda x: (x["name"] != "default", x["name"].lower()))
-    # Auto-create default if missing
     if not any(s["name"] == "default" for s in result):
         await sheets_collection.update_one(
             {"user_id": uid, "name": "default"},
@@ -100,35 +105,19 @@ async def delete_sheet(name: str, current_user: Dict = Depends(require_admin)):
 
 @router.get("/sheets/{name}/columns")
 async def get_sheet_columns(name: str, current_user: Dict = Depends(get_current_user)):
-    """Return all unique field keys found in this sheet's vehicle data."""
-    uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
-
-    # Workers can only read their assigned sheet's columns
-    if role == "worker":
-        name = assigned_sheet
-
-    # Sample up to 200 records to discover column names
+    uid = _owner(current_user)
     cursor = vehicles_collection.find({"user_id": uid, "sheet_name": name}, {"_id": 0, "data": 1}).limit(200)
     records = await cursor.to_list(length=200)
 
     all_cols: dict = {}
     for rec in records:
-        data = rec.get("data", {})
-        for k in data.keys():
+        for k in rec.get("data", {}).keys():
             if k not in all_cols:
                 all_cols[k] = True
 
-    # Preserve FIXED_FIELDS order first, then append extra cols
     ordered = [f for f in FIXED_FIELDS if f in all_cols]
     extras  = [k for k in all_cols if k not in FIXED_FIELDS]
-    columns = ordered + extras
-
-    # If sheet is empty, fall back to FIXED_FIELDS
-    if not columns:
-        columns = list(FIXED_FIELDS)
-
+    columns = ordered + extras or list(FIXED_FIELDS)
     return {"sheet_name": name, "columns": columns}
 
 
@@ -149,17 +138,11 @@ async def get_schema(current_user: Dict = Depends(get_current_user)):
 async def upload_file(
     file: UploadFile = File(...),
     sheet_name: str = Form("default"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin)
 ):
     uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
+    sheet_name = clean(sheet_name) or "default"
     try:
-        # Workers can only upload to their assigned sheet
-        if role == "worker":
-            sheet_name = assigned_sheet
-        else:
-            sheet_name = clean(sheet_name) or "default"
         content = await file.read()
         filename = file.filename.lower()
         if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
@@ -176,26 +159,22 @@ async def upload_file(
             return {"message": "No valid vehicle data found.", "count": 0, "columns": columns,
                     "vehicle_col": vehicle_col, "inserted": 0, "updated": 0, "total_processed": 0}
 
-        inserted_count = 0
-        updated_count = 0
+        inserted_count = updated_count = 0
         for record in records:
             record["user_id"] = uid
-            result = await vehicles_collection.update_one(
+            res = await vehicles_collection.update_one(
                 {"user_id": uid, "vehicle_number": record["vehicle_number"], "sheet_name": sheet_name},
                 {"$set": record}, upsert=True)
-            if result.upserted_id:
+            if res.upserted_id:
                 inserted_count += 1
             else:
                 updated_count += 1
 
         await uploads_collection.insert_one({
-            "user_id": uid,
-            "filename": file.filename, "timestamp": datetime.utcnow(),
+            "user_id": uid, "filename": file.filename, "timestamp": datetime.utcnow(),
             "inserted": inserted_count, "updated": updated_count,
-            "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD,
-            "sheet_name": sheet_name,
+            "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD, "sheet_name": sheet_name,
         })
-
         return {"message": "File processed successfully", "inserted": inserted_count,
                 "updated": updated_count, "total_processed": len(records),
                 "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD, "sheet_name": sheet_name}
@@ -208,23 +187,16 @@ async def upload_file(
 
 
 # ─────────────────────────────────────────────────────────────
-# Vehicles CRUD (user-scoped)
+# Vehicles CRUD (data_owner_id scoped)
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/search/{vehicle_number}")
 async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
                          current_user: Dict = Depends(get_current_user)):
-    uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
-
+    uid = _owner(current_user)
     v_num = vehicle_number.replace(" ", "").upper().strip()
     query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
-
-    if role == "worker":
-        # Workers can only search within their assigned sheet
-        query["sheet_name"] = assigned_sheet
-    elif sheet:
+    if sheet:
         query["sheet_name"] = clean(sheet)
 
     vehicle = await vehicles_collection.find_one(query, {"_id": 0})
@@ -232,7 +204,6 @@ async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
         raise HTTPException(status_code=404, detail=f"No record found for vehicle number: {v_num}")
     raw_data = vehicle.get("data", {})
     structured = {field: raw_data.get(field, "") for field in FIXED_FIELDS}
-    # Include any extra fields from data that are not in FIXED_FIELDS
     for k, v in raw_data.items():
         if k not in structured:
             structured[k] = v
@@ -242,19 +213,12 @@ async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
 
 @router.post("/vehicles")
 async def create_or_update_vehicle(payload: Dict[str, Any], current_user: Dict = Depends(get_current_user)):
-    uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
-
+    uid = _owner(current_user)
     vehicle_number = payload.get("vehicle_number", "").replace(" ", "").upper().strip()
     if not vehicle_number:
         raise HTTPException(status_code=400, detail="vehicle_number is required")
 
-    # Workers can only save to their assigned sheet
-    if role == "worker":
-        sheet_name = assigned_sheet
-    else:
-        sheet_name = clean(payload.get("sheet_name", "default")) or "default"
+    sheet_name = clean(payload.get("sheet_name", "default")) or "default"
 
     await sheets_collection.update_one(
         {"user_id": uid, "name": sheet_name},
@@ -275,18 +239,11 @@ async def create_or_update_vehicle(payload: Dict[str, Any], current_user: Dict =
 @router.get("/vehicles/{vehicle_number}")
 async def get_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
                       current_user: Dict = Depends(get_current_user)):
-    uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
-
+    uid = _owner(current_user)
     v_num = vehicle_number.replace(" ", "").upper().strip()
     query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
-
-    if role == "worker":
-        query["sheet_name"] = assigned_sheet
-    elif sheet:
+    if sheet:
         query["sheet_name"] = clean(sheet)
-
     vehicle = await vehicles_collection.find_one(query, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail=f"No record found for: {v_num}")
@@ -297,34 +254,26 @@ async def get_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
 
 
 @router.get("/vehicles")
-async def list_vehicles(page: int = 1, limit: int = 50,
-                        sheet: Optional[str] = Query("default"),
+async def list_vehicles(page: int = 1, limit: int = 50, sheet: Optional[str] = Query("default"),
                         current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     sheet = clean(sheet or "default")
-    query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
     skip = (page - 1) * limit
-    cursor = vehicles_collection.find(query, {"_id": 0}).skip(skip).limit(limit)
+    cursor = vehicles_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).skip(skip).limit(limit)
     vehicles = await cursor.to_list(length=limit)
-    total = await vehicles_collection.count_documents(query)
+    total = await vehicles_collection.count_documents({"user_id": uid, "sheet_name": sheet})
     return {"vehicles": vehicles, "total": total, "page": page, "limit": limit, "sheet_name": sheet}
 
 
 # ─────────────────────────────────────────────────────────────
-# Dashboard Stats (admin only)
+# Dashboard Stats
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/dashboard/stats")
 async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
                               current_user: Dict = Depends(get_current_user)):
-    uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
-    # Workers always see their assigned sheet only
-    if role == "worker":
-        sheet = assigned_sheet
-    else:
-        sheet = clean(sheet or "default")
+    uid = _owner(current_user)
+    sheet = clean(sheet or "default")
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
 
     total_vehicles = await vehicles_collection.count_documents(base_query)
@@ -332,8 +281,7 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
     seven_days_later  = today + timedelta(days=7)
     thirty_days_later = today + timedelta(days=30)
 
-    cursor = vehicles_collection.find(base_query, {"_id": 0, "vehicle_number": 1, "data": 1})
-    all_vehicles = await cursor.to_list(length=50000)
+    all_vehicles = await vehicles_collection.find(base_query, {"_id": 0, "vehicle_number": 1, "data": 1}).to_list(length=50000)
 
     active_count = expired_count = no_insurance_count = expiring_7 = expiring_30 = 0
     monthly_data: Dict[str, int] = {}
@@ -343,15 +291,11 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
 
     for v in all_vehicles:
         data = v.get("data", {})
-        expiry_str = data.get("expiredInsuranceUpto", "")
-        expiry_dt = parse_expiry_date(expiry_str)
+        expiry_dt = parse_expiry_date(data.get("expiredInsuranceUpto", ""))
 
-        if expiry_dt is None:
-            no_insurance_count += 1
-        elif expiry_dt < today:
-            expired_count += 1
-        else:
-            active_count += 1
+        if expiry_dt is None:              no_insurance_count += 1
+        elif expiry_dt < today:            expired_count += 1
+        else:                              active_count += 1
 
         if expiry_dt:
             if today <= expiry_dt <= seven_days_later:   expiring_7  += 1
@@ -367,21 +311,18 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         if fuel and fuel not in ('', '-', 'N/A'):
             fuel_counts[fuel] = fuel_counts.get(fuel, 0) + 1
 
-    uploads_cursor = uploads_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).sort("timestamp", 1)
-    all_uploads = await uploads_cursor.to_list(length=1000)
+    all_uploads = await uploads_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).sort("timestamp", 1).to_list(length=1000)
     for u in all_uploads:
         if "timestamp" in u:
             mk = u["timestamp"].strftime("%b %Y")
             monthly_data[mk] = monthly_data.get(mk, 0) + u.get("inserted", 0)
 
-    recent_uploads_cursor = uploads_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).sort("timestamp", -1).limit(5)
-    recent_uploads = await recent_uploads_cursor.to_list(length=5)
+    recent_uploads = await uploads_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).sort("timestamp", -1).limit(5).to_list(length=5)
     for u in recent_uploads:
         if "timestamp" in u:
             u["timestamp"] = u["timestamp"].isoformat()
 
-    recent_vehicles_cursor = vehicles_collection.find(base_query, {"_id": 0}).sort("_id", -1).limit(10)
-    recent_vehicles_list = await recent_vehicles_cursor.to_list(length=10)
+    recent_vehicles_list = await vehicles_collection.find(base_query, {"_id": 0}).sort("_id", -1).limit(10).to_list(length=10)
     recent_recs = []
     for v in recent_vehicles_list:
         data = v.get("data", {})
@@ -406,8 +347,8 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         try: return datetime.strptime(k, "%b %Y")
         except: return datetime.min
 
-    sorted_expiry_months  = sorted(expiry_by_month.keys(), key=month_sort_key)[-12:]
-    sorted_monthly_keys   = sorted(monthly_data.keys(),    key=month_sort_key)[-12:]
+    sorted_expiry_months = sorted(expiry_by_month.keys(), key=month_sort_key)[-12:]
+    sorted_monthly_keys  = sorted(monthly_data.keys(),    key=month_sort_key)[-12:]
 
     return {
         "sheet_name": sheet,
@@ -436,16 +377,10 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
 
 @router.get("/export")
 async def export_vehicles(sheet: Optional[str] = Query("default"),
-                          current_user: Dict = Depends(get_current_user)):
+                          current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
-    role = current_user.get("role", "worker")
-    assigned_sheet = current_user.get("assigned_sheet", "default")
-    if role == "worker":
-        sheet = assigned_sheet
-    else:
-        sheet = clean(sheet or "default")
-    cursor = vehicles_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0})
-    records = await cursor.to_list(length=10000)
+    sheet = clean(sheet or "default")
+    records = await vehicles_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).to_list(length=10000)
     excel_bytes = services.export_to_excel(records)
     safe_name = sheet.replace(" ", "_").replace("/", "-")
     return StreamingResponse(
@@ -456,23 +391,53 @@ async def export_vehicles(sheet: Optional[str] = Query("default"),
 
 
 # ─────────────────────────────────────────────────────────────
-# Admin — User Management
+# Admin — Worker Management
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/admin/users")
 async def list_users(current_user: Dict = Depends(require_admin)):
-    cursor = users_collection.find({}, {"_id": 1, "username": 1, "role": 1, "assigned_sheet": 1, "created_at": 1})
+    admin_id = current_user["id"]
+    # Admins see themselves + workers they created
+    cursor = users_collection.find(
+        {"$or": [{"_id": ObjectId(admin_id)}, {"admin_id": admin_id}]},
+        {"_id": 1, "username": 1, "role": 1, "assigned_sheet": 1, "created_at": 1, "admin_id": 1}
+    )
     users = await cursor.to_list(length=500)
-    result = []
-    for u in users:
-        result.append({
-            "id": str(u["_id"]),
-            "username": u.get("username", ""),
-            "role": u.get("role", "worker"),
-            "assigned_sheet": u.get("assigned_sheet", "default"),
-            "created_at": u.get("created_at", "").isoformat() if u.get("created_at") else "",
-        })
-    return {"users": result}
+    return {"users": [{
+        "id": str(u["_id"]),
+        "username": u.get("username", ""),
+        "role": u.get("role", "worker"),
+        "assigned_sheet": u.get("assigned_sheet", "default"),
+        "admin_id": u.get("admin_id"),
+        "created_at": u.get("created_at", "").isoformat() if u.get("created_at") else "",
+    } for u in users]}
+
+
+@router.post("/admin/workers")
+async def create_worker(payload: Dict[str, Any], current_user: Dict = Depends(require_admin)):
+    """Admin creates a worker — automatically linked to this admin's data space."""
+    from auth import hash_password
+    admin_id = current_user["id"]
+    username = str(payload.get("username", "")).strip().lower()
+    password = str(payload.get("password", "")).strip()
+
+    if not username or len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters.")
+    if not password or len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    if await users_collection.find_one({"username": username}):
+        raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
+
+    result = await users_collection.insert_one({
+        "username": username,
+        "password": hash_password(password),
+        "role": "worker",
+        "assigned_sheet": "default",
+        "admin_id": admin_id,
+        "created_at": datetime.utcnow(),
+    })
+    return {"message": f'Worker "{username}" created.', "id": str(result.inserted_id), "username": username}
 
 
 @router.patch("/admin/users/{user_id}")
@@ -491,3 +456,17 @@ async def update_user(user_id: str, payload: Dict[str, Any], current_user: Dict 
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found.")
     return {"message": "User updated.", "updates": updates}
+
+
+@router.delete("/admin/users/{user_id}")
+async def delete_worker(user_id: str, current_user: Dict = Depends(require_admin)):
+    admin_id = current_user["id"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user ID.")
+    user = await users_collection.find_one({"_id": obj_id, "admin_id": admin_id, "role": "worker"})
+    if not user:
+        raise HTTPException(status_code=404, detail="Worker not found or not yours to delete.")
+    await users_collection.delete_one({"_id": obj_id})
+    return {"message": "Worker deleted."}

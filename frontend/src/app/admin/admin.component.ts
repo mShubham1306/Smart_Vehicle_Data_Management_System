@@ -9,6 +9,7 @@ interface WorkerUser {
   username: string;
   role: 'admin' | 'worker';
   assigned_sheet: string;
+  admin_id?: string;
   created_at: string;
 }
 
@@ -22,7 +23,7 @@ const API = environment.apiUrl;
     <div style="font-family:'Inter',sans-serif">
       <div class="mb-8">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Manage Workers</h1>
-        <p class="text-sm text-textGray mt-1">Create worker accounts and assign them to sheets.</p>
+        <p class="text-sm text-textGray mt-1">Create worker accounts. Workers will see all your sheets automatically.</p>
       </div>
 
       <!-- Create Worker -->
@@ -30,7 +31,7 @@ const API = environment.apiUrl;
         <h2 class="text-base font-bold text-textLight mb-5 flex items-center gap-2">
           ➕ Create Worker Account
         </h2>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-[10px] text-textGray uppercase tracking-wider font-semibold mb-2">Username</label>
             <input type="text" [(ngModel)]="newUser.username" placeholder="e.g. worker1"
@@ -39,11 +40,6 @@ const API = environment.apiUrl;
           <div>
             <label class="block text-[10px] text-textGray uppercase tracking-wider font-semibold mb-2">Password</label>
             <input type="password" [(ngModel)]="newUser.password" placeholder="Min 6 chars"
-              class="input-field w-full px-4 py-3 text-sm">
-          </div>
-          <div>
-            <label class="block text-[10px] text-textGray uppercase tracking-wider font-semibold mb-2">Assigned Sheet</label>
-            <input type="text" [(ngModel)]="newUser.assigned_sheet" placeholder="e.g. Sheet1 or default"
               class="input-field w-full px-4 py-3 text-sm">
           </div>
         </div>
@@ -60,10 +56,10 @@ const API = environment.apiUrl;
         </div>
       </div>
 
-      <!-- User List -->
+      <!-- Worker List -->
       <div class="rounded-2xl overflow-hidden" style="background:#141414; border:1px solid #262626">
         <div class="px-6 py-4 flex items-center justify-between" style="border-bottom:1px solid #262626">
-          <h2 class="text-base font-bold text-textLight">All Users</h2>
+          <h2 class="text-base font-bold text-textLight">Your Workers</h2>
           <button (click)="loadUsers()" class="text-xs text-textGray hover:text-textLight transition-colors px-3 py-1.5 rounded-lg"
             style="background:rgba(255,255,255,0.04); border:1px solid #333">🔄 Refresh</button>
         </div>
@@ -78,7 +74,6 @@ const API = environment.apiUrl;
               <tr style="border-bottom:1px solid #262626; background:rgba(255,255,255,0.02)">
                 <th class="text-left px-6 py-3 text-[10px] font-bold text-textGray uppercase tracking-wider">Username</th>
                 <th class="text-left px-4 py-3 text-[10px] font-bold text-textGray uppercase tracking-wider">Role</th>
-                <th class="text-left px-4 py-3 text-[10px] font-bold text-textGray uppercase tracking-wider">Assigned Sheet</th>
                 <th class="text-left px-4 py-3 text-[10px] font-bold text-textGray uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -100,29 +95,16 @@ const API = environment.apiUrl;
                   </span>
                 </td>
                 <td class="px-4 py-4">
-                  <div *ngIf="editingId !== u.id" class="flex items-center gap-2">
-                    <span class="text-xs text-textGray">{{ u.assigned_sheet || 'default' }}</span>
-                    <button *ngIf="u.role==='worker'" (click)="startEdit(u)" class="text-[10px] text-primary hover:underline">Edit</button>
-                  </div>
-                  <div *ngIf="editingId === u.id" class="flex items-center gap-2">
-                    <input type="text" [(ngModel)]="editSheet" class="input-field px-3 py-1.5 text-xs w-32">
-                    <button (click)="saveEdit(u)" class="btn-red px-3 py-1.5 text-[10px]">Save</button>
-                    <button (click)="cancelEdit()" class="text-[10px] text-textGray hover:text-textLight">Cancel</button>
-                  </div>
-                </td>
-                <td class="px-4 py-4">
-                  <button *ngIf="u.role==='worker'" (click)="toggleRole(u)" class="text-[10px] px-3 py-1.5 rounded-lg text-textGray hover:text-white transition-all"
-                    style="background:rgba(255,255,255,0.04); border:1px solid #333">
-                    → Make Admin
+                  <button *ngIf="u.role==='worker'" (click)="deleteWorker(u)"
+                    class="text-[10px] px-3 py-1.5 rounded-lg transition-all"
+                    style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); color:#ef4444">
+                    🗑 Delete
                   </button>
-                  <button *ngIf="u.role==='admin'" (click)="toggleRole(u)" class="text-[10px] px-3 py-1.5 rounded-lg text-textGray hover:text-white transition-all"
-                    style="background:rgba(255,255,255,0.04); border:1px solid #333">
-                    → Make Worker
-                  </button>
+                  <span *ngIf="u.role==='admin'" class="text-[10px] text-textGray">—</span>
                 </td>
               </tr>
               <tr *ngIf="!users.length">
-                <td colspan="4" class="text-center text-textGray py-12 text-sm">No users found.</td>
+                <td colspan="3" class="text-center text-textGray py-12 text-sm">No workers yet. Create one above.</td>
               </tr>
             </tbody>
           </table>
@@ -137,10 +119,8 @@ export class AdminComponent implements OnInit {
   creating = false;
   createMsg = '';
   createError = false;
-  editingId = '';
-  editSheet = '';
 
-  newUser = { username: '', password: '', assigned_sheet: 'default' };
+  newUser = { username: '', password: '' };
 
   constructor(private http: HttpClient) {}
 
@@ -155,25 +135,22 @@ export class AdminComponent implements OnInit {
   }
 
   createWorker() {
-    const { username, password, assigned_sheet } = this.newUser;
+    const { username, password } = this.newUser;
     if (!username.trim() || !password.trim()) {
       this.createMsg = 'Username and password are required.';
       this.createError = true; return;
     }
     this.creating = true; this.createMsg = ''; this.createError = false;
-    // Register via auth endpoint — backend gives worker role for non-first user
-    this.http.post<any>(`${environment.apiUrl}/auth/register`, { username: username.trim().toLowerCase(), password }).subscribe({
+    // Use the new dedicated worker-create endpoint (sets admin_id automatically)
+    this.http.post<any>(`${API}/admin/workers`, {
+      username: username.trim().toLowerCase(), password
+    }).subscribe({
       next: res => {
-        const userId = res.user?.id;
-        if (userId && assigned_sheet) {
-          // Assign the sheet
-          this.http.patch<any>(`${API}/admin/users/${userId}`, { assigned_sheet }).subscribe();
-        }
-        this.createMsg = `Worker "${username}" created.`;
+        this.createMsg = `Worker "${res.username}" created. They can access all your sheets.`;
         this.createError = false;
-        this.newUser = { username: '', password: '', assigned_sheet: 'default' };
+        this.newUser = { username: '', password: '' };
         this.creating = false;
-        setTimeout(() => this.loadUsers(), 600);
+        setTimeout(() => this.loadUsers(), 400);
       },
       error: err => {
         this.createMsg = err.error?.detail || 'Failed to create worker.';
@@ -182,21 +159,11 @@ export class AdminComponent implements OnInit {
     });
   }
 
-  startEdit(u: WorkerUser) { this.editingId = u.id; this.editSheet = u.assigned_sheet || 'default'; }
-  cancelEdit() { this.editingId = ''; this.editSheet = ''; }
-
-  saveEdit(u: WorkerUser) {
-    this.http.patch<any>(`${API}/admin/users/${u.id}`, { assigned_sheet: this.editSheet }).subscribe({
-      next: () => { u.assigned_sheet = this.editSheet; this.cancelEdit(); },
-      error: err => alert(err.error?.detail || 'Update failed.')
-    });
-  }
-
-  toggleRole(u: WorkerUser) {
-    const newRole = u.role === 'admin' ? 'worker' : 'admin';
-    this.http.patch<any>(`${API}/admin/users/${u.id}`, { role: newRole }).subscribe({
-      next: () => { u.role = newRole; },
-      error: err => alert(err.error?.detail || 'Update failed.')
+  deleteWorker(u: WorkerUser) {
+    if (!confirm(`Delete worker "${u.username}"? This cannot be undone.`)) return;
+    this.http.delete<any>(`${API}/admin/users/${u.id}`).subscribe({
+      next: () => { this.users = this.users.filter(x => x.id !== u.id); },
+      error: err => alert(err.error?.detail || 'Delete failed.')
     });
   }
 }

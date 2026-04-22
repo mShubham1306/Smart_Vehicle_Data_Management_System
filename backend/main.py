@@ -77,46 +77,52 @@ async def promote_admin(
 
 async def migrate_user_roles():
     """
-    One-time migration: ensure every user document has a 'role' field.
-    - The earliest-created user (lowest ObjectId) gets 'admin'.
-    - All remaining users without a role get 'worker'.
-    Runs safely every startup — skips users that already have roles set.
+    One-time migration:
+    1. Ensure every user has a 'role' field (oldest user → admin, rest → worker).
+    2. Backfill 'admin_id' on workers that don't have one (link to first admin).
+    Runs safely every startup — skips users that already have correct data.
     """
     try:
-        # Find users that are missing the role field entirely
+        # Step 1: fix missing roles
         missing_role_cursor = users_collection.find(
             {"role": {"$exists": False}},
             {"_id": 1, "username": 1}
         ).sort("_id", 1)
         missing_role_users = await missing_role_cursor.to_list(length=10000)
 
-        if not missing_role_users:
-            print("[migration] All users already have roles — no migration needed.")
-            return
+        if missing_role_users:
+            existing_admin = await users_collection.find_one({"role": "admin"})
+            first = True
+            for user in missing_role_users:
+                if first and existing_admin is None:
+                    role = "admin"
+                    first = False
+                else:
+                    role = "worker"
+                    first = False
+                await users_collection.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"role": role, "assigned_sheet": "default"}}
+                )
+                print(f"[migration] Set {user.get('username', str(user['_id']))} → role={role}")
+            print(f"[migration] Done: migrated {len(missing_role_users)} user(s).")
+        else:
+            print("[migration] All users already have roles.")
 
-        # Check if ANY admin already exists in the DB
-        existing_admin = await users_collection.find_one({"role": "admin"})
-
-        first = True
-        for idx, user in enumerate(missing_role_users):
-            if first and existing_admin is None:
-                # Promote first (oldest) user to admin if no admin exists yet
-                role = "admin"
-                first = False
-            else:
-                role = "worker"
-                first = False
-
-            await users_collection.update_one(
-                {"_id": user["_id"]},
-                {"$set": {"role": role, "assigned_sheet": "default"}}
+        # Step 2: backfill admin_id for workers that don't have it
+        first_admin = await users_collection.find_one({"role": "admin"}, sort=[("_id", 1)])
+        if first_admin:
+            admin_id_str = str(first_admin["_id"])
+            result = await users_collection.update_many(
+                {"role": "worker", "admin_id": {"$exists": False}},
+                {"$set": {"admin_id": admin_id_str}}
             )
-            print(f"[migration] Set {user.get('username', str(user['_id']))} → role={role}")
-
-        print(f"[migration] Done: migrated {len(missing_role_users)} user(s).")
+            if result.modified_count:
+                print(f"[migration] Backfilled admin_id for {result.modified_count} worker(s) → {admin_id_str}")
 
     except Exception as e:
-        print(f"[migration] Role migration failed (non-critical): {e}")
+        print(f"[migration] Migration failed (non-critical): {e}")
+
 
 
 @app.on_event("startup")

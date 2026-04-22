@@ -32,13 +32,15 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain[:72].encode('utf-8'), hashed.encode('utf-8'))
 
 
-def create_access_token(user_id: str, username: str, role: str = "worker", assigned_sheet: Optional[str] = None) -> str:
+def create_access_token(user_id: str, username: str, role: str = "worker",
+                        assigned_sheet: Optional[str] = None, admin_id: Optional[str] = None) -> str:
     expire = datetime.utcnow() + timedelta(days=JWT_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "username": username,
         "role": role,
         "assigned_sheet": assigned_sheet,
+        "admin_id": admin_id,   # For workers: their parent admin's user_id
         "exp": expire,
         "iat": datetime.utcnow(),
     }
@@ -65,11 +67,17 @@ async def get_current_user(
     payload = decode_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token. Please log in again.")
+    role = payload.get("role", "worker")
+    user_id = payload["sub"]
+    admin_id = payload.get("admin_id")
     return {
-        "id": payload["sub"],
+        "id": user_id,
         "username": payload.get("username", ""),
-        "role": payload.get("role", "worker"),
+        "role": role,
         "assigned_sheet": payload.get("assigned_sheet", None),
+        # Effective user_id for data queries: workers use their admin's ID
+        "data_owner_id": admin_id if (role == "worker" and admin_id) else user_id,
+        "admin_id": admin_id,
     }
 
 
@@ -85,6 +93,7 @@ async def require_admin(current_user: Dict[str, Any] = Depends(get_current_user)
 
 @auth_router.post("/register")
 async def register(payload: Dict[str, Any]):
+    """Public registration — only for creating the first admin. Workers are created by admins."""
     username = str(payload.get("username", "")).strip().lower()
     password = str(payload.get("password", "")).strip()
 
@@ -103,30 +112,36 @@ async def register(payload: Dict[str, Any]):
     if existing:
         raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
 
-    # Determine role — explicit 'admin' request OR first-ever user
+    # Role: first-ever user becomes admin, everyone else is worker
     total_users = await users_collection.count_documents({})
     requested_role = str(payload.get("role", "")).lower().strip()
+    admin_id_field = payload.get("admin_id")  # Set by admin-create-worker flow
     if requested_role == "admin" or total_users == 0:
         role = "admin"
+        admin_id_field = None
     else:
         role = "worker"
 
     hashed = hash_password(password)
-    result = await users_collection.insert_one({
+    doc = {
         "username": username,
         "password": hashed,
         "role": role,
         "assigned_sheet": "default",
         "created_at": datetime.utcnow(),
-    })
+    }
+    if admin_id_field:
+        doc["admin_id"] = admin_id_field
 
+    result = await users_collection.insert_one(doc)
     user_id = str(result.inserted_id)
-    token = create_access_token(user_id, username, role, "default")
+    token = create_access_token(user_id, username, role, "default", admin_id_field)
 
     return {
         "message": "Account created successfully.",
         "token": token,
-        "user": {"id": user_id, "username": username, "role": role, "assigned_sheet": "default"},
+        "user": {"id": user_id, "username": username, "role": role,
+                 "assigned_sheet": "default", "admin_id": admin_id_field},
     }
 
 
@@ -145,12 +160,14 @@ async def login(payload: Dict[str, Any]):
     user_id = str(user["_id"])
     role = user.get("role", "worker")
     assigned_sheet = user.get("assigned_sheet", "default")
-    token = create_access_token(user_id, username, role, assigned_sheet)
+    admin_id = user.get("admin_id")
+    token = create_access_token(user_id, username, role, assigned_sheet, admin_id)
 
     return {
         "message": "Login successful.",
         "token": token,
-        "user": {"id": user_id, "username": username, "role": role, "assigned_sheet": assigned_sheet},
+        "user": {"id": user_id, "username": username, "role": role,
+                 "assigned_sheet": assigned_sheet, "admin_id": admin_id},
     }
 
 
