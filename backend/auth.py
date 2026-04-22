@@ -243,10 +243,14 @@ async def forgot_password(payload: Dict[str, Any]):
     
     if not email_sent:
         print(f"Warning: Failed to send OTP email to {email}. SMTP might not be configured.")
-        raise HTTPException(status_code=500, detail="Could not dispatch email. Please check SMTP configuration.")
+        return {
+            "message": "SMTP not configured. Falling back to test mode.",
+            "dev_otp": otp
+        }
 
     return {
-        "message": "OTP sent to your email. Please check your inbox (and spam folder)."
+        "message": "OTP sent to your email. Please check your inbox (and spam folder).",
+        "dev_otp": ""
     }
 
 
