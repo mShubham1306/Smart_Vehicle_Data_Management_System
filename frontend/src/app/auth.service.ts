@@ -89,6 +89,14 @@ export class AuthService {
     );
   }
 
+  forgotPassword(payload: any): Observable<any> {
+    return this.http.post<any>(`${API}/forgot-password`, payload);
+  }
+
+  resetPassword(payload: any): Observable<any> {
+    return this.http.post<any>(`${API}/reset-password`, payload);
+  }
+
   logout() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);

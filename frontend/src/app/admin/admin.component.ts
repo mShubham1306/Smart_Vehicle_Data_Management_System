@@ -95,11 +95,18 @@ const API = environment.apiUrl;
                   </span>
                 </td>
                 <td class="px-4 py-4">
-                  <button *ngIf="u.role==='worker'" (click)="deleteWorker(u)"
-                    class="text-[10px] px-3 py-1.5 rounded-lg transition-all"
-                    style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); color:#ef4444">
-                    🗑 Delete
-                  </button>
+                  <div class="flex items-center gap-2" *ngIf="u.role==='worker'">
+                    <button (click)="resetPassword(u)"
+                      class="text-[10px] px-3 py-1.5 rounded-lg transition-all"
+                      style="background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); color:#60a5fa">
+                      🔑 Reset Pass
+                    </button>
+                    <button (click)="deleteWorker(u)"
+                      class="text-[10px] px-3 py-1.5 rounded-lg transition-all"
+                      style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); color:#ef4444">
+                      🗑 Delete
+                    </button>
+                  </div>
                   <span *ngIf="u.role==='admin'" class="text-[10px] text-textGray">—</span>
                 </td>
               </tr>
@@ -164,6 +171,20 @@ export class AdminComponent implements OnInit {
     this.http.delete<any>(`${API}/admin/users/${u.id}`).subscribe({
       next: () => { this.users = this.users.filter(x => x.id !== u.id); },
       error: err => alert(err.error?.detail || 'Delete failed.')
+    });
+  }
+
+  resetPassword(u: WorkerUser) {
+    const newPass = prompt(`Enter new password for ${u.username} (min 6 characters):`);
+    if (newPass === null) return;
+    if (newPass.length < 6) {
+      alert('Password must be at least 6 characters.');
+      return;
+    }
+    
+    this.http.patch<any>(`${API}/admin/users/${u.id}`, { password: newPass }).subscribe({
+      next: () => alert(`Password for ${u.username} updated successfully.`),
+      error: err => alert(err.error?.detail || 'Update failed.')
     });
   }
 }

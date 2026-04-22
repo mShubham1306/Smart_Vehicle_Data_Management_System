@@ -174,3 +174,72 @@ async def login(payload: Dict[str, Any]):
 @auth_router.get("/me")
 async def me(current_user: Dict[str, Any] = Depends(get_current_user)):
     return {"user": current_user}
+
+
+# ─────────────────────────────────────────────────────────────
+# Password Reset (OTP Flow)
+# ─────────────────────────────────────────────────────────────
+import random
+
+@auth_router.post("/forgot-password")
+async def forgot_password(payload: Dict[str, Any]):
+    username = str(payload.get("username", "")).strip().lower()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required.")
+        
+    user = await users_collection.find_one({"username": username})
+    if not user:
+        # Don't reveal if user exists or not for security, but we need it to work
+        raise HTTPException(status_code=404, detail="User not found.")
+        
+    # Generate 6-digit OTP
+    otp = str(random.randint(100000, 999999))
+    expire_time = datetime.utcnow() + timedelta(minutes=15)
+    
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"reset_otp": otp, "reset_otp_exp": expire_time}}
+    )
+    
+    # In a real app we'd email this. Here we return it so the frontend can show a "Test Mode" alert.
+    return {
+        "message": "OTP generated successfully. (Check your alerts in test mode)",
+        "dev_otp": otp
+    }
+
+
+@auth_router.post("/reset-password")
+async def reset_password(payload: Dict[str, Any]):
+    username = str(payload.get("username", "")).strip().lower()
+    otp = str(payload.get("otp", "")).strip()
+    new_password = str(payload.get("new_password", "")).strip()
+    
+    if not username or not otp or not new_password:
+        raise HTTPException(status_code=400, detail="Username, OTP, and new password are required.")
+        
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+        
+    user = await users_collection.find_one({"username": username})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+        
+    # Verify OTP
+    stored_otp = user.get("reset_otp")
+    stored_exp = user.get("reset_otp_exp")
+    
+    if not stored_otp or stored_otp != otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP.")
+        
+    if not stored_exp or datetime.utcnow() > stored_exp:
+        raise HTTPException(status_code=400, detail="OTP has expired.")
+        
+    # Update password & clear OTP
+    hashed = hash_password(new_password)
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password": hashed}, "$unset": {"reset_otp": "", "reset_otp_exp": ""}}
+    )
+    
+    return {"message": "Password reset successfully. You can now log in."}
+

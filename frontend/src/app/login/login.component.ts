@@ -62,9 +62,13 @@ import { AuthService } from '../auth.service';
         <div class="card">
 
           <!-- Mode Tabs -->
-          <div class="tabs">
+          <div class="tabs" *ngIf="mode === 'login' || mode === 'register'">
             <button class="tab" [class.active]="mode==='login'" (click)="mode='login';error=''">Sign In</button>
             <button class="tab" [class.active]="mode==='register'" (click)="mode='register';error=''">Create Account</button>
+          </div>
+          <div class="tabs" *ngIf="mode === 'forgot_password' || mode === 'reset_password'">
+            <button class="tab active" style="text-align:left; padding-left:28px" disabled>Password Reset</button>
+            <button class="tab" style="text-align:right; padding-right:28px" (click)="mode='login';error=''">Back to Login</button>
           </div>
 
           <div class="body">
@@ -91,29 +95,44 @@ import { AuthService } from '../auth.service';
             </div>
 
             <!-- Username -->
-            <div class="field">
+            <div class="field" *ngIf="mode !== 'reset_password'">
               <label>Username</label>
               <input type="text" [(ngModel)]="username" placeholder="Enter username" autocomplete="username">
             </div>
 
+            <!-- OTP -->
+            <div class="field" *ngIf="mode === 'reset_password'">
+              <label>6-Digit OTP</label>
+              <input type="text" [(ngModel)]="otp" placeholder="Enter OTP from alert" autocomplete="one-time-code">
+            </div>
+
             <!-- Password -->
-            <div class="field">
-              <label>Password</label>
+            <div class="field" *ngIf="mode !== 'forgot_password'">
+              <label>{{ mode === 'reset_password' ? 'New Password' : 'Password' }}</label>
               <input type="password" [(ngModel)]="password" (keyup.enter)="submit()" placeholder="••••••••" autocomplete="current-password">
-              <p *ngIf="mode==='register'" style="font-size:0.63rem;color:#555;margin-top:4px">Minimum 6 characters</p>
+              <p *ngIf="mode==='register' || mode==='reset_password'" style="font-size:0.63rem;color:#555;margin-top:4px">Minimum 6 characters</p>
+            </div>
+            
+            <div *ngIf="mode === 'login'" style="text-align:right; margin-top:-8px; margin-bottom:16px">
+              <a href="javascript:void(0)" (click)="mode='forgot_password';error=''" style="font-size:0.75rem; color:#ef4444; text-decoration:none; font-weight:600">Forgot Password?</a>
             </div>
 
             <!-- Submit -->
-            <button class="btn-submit" [class.btn-admin]="isAdminLogin" [class.btn-user]="!isAdminLogin"
-              [disabled]="loading || !username || !password" (click)="submit()">
+            <button class="btn-submit btn-admin"
+              [disabled]="loading || (mode === 'forgot_password' ? !username : mode === 'reset_password' ? !otp || !password : !username || !password)" 
+              (click)="submit()">
               <span *ngIf="!loading">
                 {{ mode === 'login'
                    ? (isAdminLogin ? '→ Sign in as Admin' : '→ Sign in')
-                   : (isAdminLogin ? '→ Register Admin Account' : '→ Create Account') }}
+                   : mode === 'register' 
+                     ? (isAdminLogin ? '→ Register Admin Account' : '→ Create Account')
+                     : mode === 'forgot_password' 
+                       ? '→ Get Reset OTP' 
+                       : '→ Update Password' }}
               </span>
               <span *ngIf="loading" style="display:flex;align-items:center;justify-content:center;gap:8px">
                 <span class="spin"></span>
-                {{ mode === 'login' ? 'Signing in…' : 'Creating account…' }}
+                {{ mode === 'login' ? 'Signing in…' : mode === 'register' ? 'Creating account…' : 'Processing…' }}
               </span>
             </button>
 
@@ -126,9 +145,10 @@ import { AuthService } from '../auth.service';
   `
 })
 export class LoginComponent {
-  mode: 'login' | 'register' = 'login';
+  mode: 'login' | 'register' | 'forgot_password' | 'reset_password' = 'login';
   username = '';
   password = '';
+  otp = '';
   error = '';
   loading = false;
   isAdminLogin = false;
@@ -140,9 +160,49 @@ export class LoginComponent {
   }
 
   submit() {
-    if (!this.username || !this.password) return;
+    if (this.mode === 'forgot_password' && !this.username) return;
+    if (this.mode === 'reset_password' && (!this.otp || !this.password)) return;
+    if ((this.mode === 'login' || this.mode === 'register') && (!this.username || !this.password)) return;
+    
     this.error = '';
     this.loading = true;
+
+    if (this.mode === 'forgot_password') {
+      this.authService.forgotPassword({ username: this.username.trim().toLowerCase() }).subscribe({
+        next: (res: any) => {
+          this.loading = false;
+          alert(`(TEST MODE) Your OTP is: ${res.dev_otp}`);
+          this.mode = 'reset_password';
+        },
+        error: (err: any) => {
+           this.loading = false;
+           this.error = err.error?.detail || 'User not found.';
+        }
+      });
+      return;
+    }
+
+    if (this.mode === 'reset_password') {
+      this.authService.resetPassword({ 
+        username: this.username.trim().toLowerCase(), 
+        otp: this.otp, 
+        new_password: this.password 
+      }).subscribe({
+        next: (res: any) => {
+          this.loading = false;
+          alert('Password reset successful! You can now log in.');
+          this.mode = 'login';
+          this.password = '';
+          this.otp = '';
+        },
+        error: (err: any) => {
+           this.loading = false;
+           this.error = err.error?.detail || 'Reset failed.';
+        }
+      });
+      return;
+    }
+
     const basePayload = { username: this.username.trim().toLowerCase(), password: this.password };
     // When admin checkbox is checked during REGISTER, create admin account
     const payload = this.mode === 'register' && this.isAdminLogin

@@ -452,6 +452,9 @@ async def update_user(user_id: str, payload: Dict[str, Any], current_user: Dict 
         updates["role"] = payload["role"]
     if "assigned_sheet" in payload:
         updates["assigned_sheet"] = str(payload["assigned_sheet"]).strip() or "default"
+    if "password" in payload and payload["password"]:
+        from auth import hash_password
+        updates["password"] = hash_password(str(payload["password"]).strip())
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update.")
     try:
@@ -460,7 +463,7 @@ async def update_user(user_id: str, payload: Dict[str, Any], current_user: Dict 
         raise HTTPException(status_code=400, detail="Invalid user ID.")
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found.")
-    return {"message": "User updated.", "updates": updates}
+    return {"message": "User updated.", "updates": {k: v for k, v in updates.items() if k != "password"}}
 
 
 @router.delete("/admin/users/{user_id}")
