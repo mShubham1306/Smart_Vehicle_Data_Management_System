@@ -124,9 +124,9 @@ export class DataService {
     );
   }
 
-  searchVehicle(vn: string, sheet?: string): Observable<any> {
-    const s = sheet ?? this.activeSheet;
-    return this.http.get<any>(`${API}/search/${encodeURIComponent(vn)}?sheet=${encodeURIComponent(s)}`);
+  searchVehicle(vn: string): Observable<any> {
+    // Global search — no sheet filter, backend searches all sheets
+    return this.http.get<any>(`${API}/search/${encodeURIComponent(vn)}`);
   }
 
   getVehicle(vn: string, sheet?: string): Observable<any> {

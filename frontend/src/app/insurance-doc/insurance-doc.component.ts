@@ -175,19 +175,19 @@ import { CommonModule } from '@angular/common';
           <div class="col-hd">Vehicle Detail</div>
           <div class="dr">
             <span class="dl">Make</span>
-            <span class="dv">{{ f('vehicleManufacturerName') || f('vehicleMake') || '—' }}</span>
+            <span class="dv">{{ f('vehicleManufacturerName','vehicleMake','VEHICLE MAKE','make') || '—' }}</span>
           </div>
           <div class="dr">
             <span class="dl">Model</span>
-            <span class="dv">{{ f('vehicleModel') || f('model') || '—' }}</span>
+            <span class="dv">{{ f('vehicleModel','model','VEHICLE MODEL VARIANT','VEHICLE MODEL') || '—' }}</span>
           </div>
           <div class="dr">
             <span class="dl">Vehicle Number</span>
-            <span class="dv bold" style="letter-spacing:1px">{{ vehicleNumber || f('Vehicle') || '—' }}</span>
+            <span class="dv bold" style="letter-spacing:1px">{{ vehicleNumber || f('Vehicle','vehicle','VEHICLE NO') || '—' }}</span>
           </div>
           <div class="dr">
             <span class="dl">Due Date</span>
-            <span class="dv">{{ f('expiredInsuranceUpto') || '—' }}</span>
+            <span class="dv">{{ f('expiredInsuranceUpto','DUE DATE','due date','EXPIRY DATE','insurance expiry') || '—' }}</span>
           </div>
         </div>
 
@@ -196,15 +196,15 @@ import { CommonModule } from '@angular/common';
           <div class="col-hd">Customer Detail</div>
           <div class="dr">
             <span class="dl">Name</span>
-            <span class="dv bold">{{ f('ownerName') || '—' }}</span>
+            <span class="dv bold">{{ f('ownerName','OWNER NAME','customer name','NAME') || '—' }}</span>
           </div>
           <div class="dr">
             <span class="dl">Mobile No</span>
-            <span class="dv">{{ f('ownerMobileNo') || '—' }}</span>
+            <span class="dv">{{ f('ownerMobileNo','MOBILE','mobile','OWNER MOBILE NO','phone') || '—' }}</span>
           </div>
           <div class="dr" style="align-items:start">
             <span class="dl" style="padding-top:2px">Address</span>
-            <span class="dv addr">{{ f('ownerAddress') || '—' }}</span>
+            <span class="dv addr">{{ f('ownerAddress','OWNER ADDRESS','address','ADDRESS') || '—' }}</span>
           </div>
         </div>
       </div>
@@ -217,19 +217,19 @@ import { CommonModule } from '@angular/common';
           <div class="sec-hd">Premium Schedule</div>
           <div class="prow">
             <span class="pl-l">Basic OD Premium</span>
-            <span class="pl-v">{{ f('basicODPremium') || f('basicOD') || f('basic_od') || calcBasicOD() }}</span>
+            <span class="pl-v">{{ f('basicODPremium','BASIC PREMIUM','basicOD','basic_od') || calcBasicOD() }}</span>
           </div>
           <div class="prow">
             <span class="pl-l">No Claim Bonus</span>
-            <span class="pl-v">{{ f('noClaimBonus') || f('ncb') || calcNCB() }}</span>
+            <span class="pl-v">{{ f('ncb','NCB','noClaimBonus','no claim bonus') || calcNCB() }}</span>
           </div>
           <div class="prow">
             <span class="pl-l">Zero Dep Premium</span>
-            <span class="pl-v">{{ f('zeroDepPremium') || f('zeroDep') || f('zero_dep') || calcZeroDep() }}</span>
+            <span class="pl-v">{{ f('zeroDepPremium','ZERO DEP','zeroDep','zero_dep') || calcZeroDep() }}</span>
           </div>
           <div class="prow">
             <span class="pl-l">With Add On Premium</span>
-            <span class="pl-v">{{ f('addOnPremium') || f('withAddOnPremium') || f('addOn') || calcAddOn() }}</span>
+            <span class="pl-v">{{ f('addOnPremium','withAddOnPremium','addOn','ADD ON') || calcAddOn() }}</span>
           </div>
         </div>
 
@@ -241,11 +241,11 @@ import { CommonModule } from '@angular/common';
           </div>
           <div class="idv-row">
             <span class="idv-l">Insure Declared Value (IDV)</span>
-            <span class="idv-v">{{ f('idv') || f('IDV') || f('insuredDeclaredValue') || fmtAmt(total()) }}</span>
+            <span class="idv-v">{{ f('idv','IDV','insuredDeclaredValue','INSURED DECLARED VALUE') || fmtAmt(total()) }}</span>
           </div>
           <div class="idv-row">
             <span class="idv-l">Tenure</span>
-            <span class="idv-v">{{ f('tenure') || '1 Yr' }}</span>
+            <span class="idv-v">{{ f('tenure','TENURE') || '1 Yr' }}</span>
           </div>
         </div>
       </div>
@@ -286,14 +286,17 @@ export class InsuranceDocComponent implements OnChanges {
 
   ngOnChanges(_c: SimpleChanges) {}
 
-  /** Safe field getter */
-  f(key: string): string {
+  /** Safe multi-key field getter — tries each key until a non-empty value is found */
+  f(...keys: string[]): string {
     if (!this.data) return '';
-    const v = this.data[key];
-    if (v === undefined || v === null) return '';
-    const s = String(v).trim();
-    if (['', 'nan', 'none', 'null', 'n/a', 'na', '-', '0'].includes(s.toLowerCase())) return '';
-    return s;
+    for (const key of keys) {
+      const v = this.data[key];
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (['', 'nan', 'none', 'null', 'n/a', 'na', '-', '0'].includes(s.toLowerCase())) continue;
+      return s;
+    }
+    return '';
   }
 
   onImgErr(e: Event, fallback: string) {
@@ -308,48 +311,62 @@ export class InsuranceDocComponent implements OnChanges {
   }
 
   total(): string {
-    // Try multiple field names for the total premium
-    const raw = this.f('saleAmount') || this.f('totalPremium') || this.f('total_premium') || this.f('premium');
+    // Try all known fields for total/final premium
+    const raw = this.f('totalPremium', 'saleAmount', 'total_premium', 'premium', 'FINAL PREMIUM', 'final premium');
     const n = parseFloat(String(raw || '0').replace(/[^0-9.]/g, ''));
     return isNaN(n) ? '0' : String(n);
   }
 
-  private totalNum(): number {
-    return parseFloat(this.total()) || 0;
+  private totalNum(): number { return parseFloat(this.total()) || 0; }
+
+  private netNum(): number {
+    const ff = this.f('netPremium', 'nt premium', 'NT PREMIUM', 'net_premium', 'netAmount');
+    if (ff) return parseFloat(ff.replace(/[^0-9.]/g, '')) || 0;
+    const t = this.totalNum();
+    return t ? Math.round(t / 1.18) : 0;
   }
 
   calcNet(): string {
-    const ff = this.f('netPremium') || this.f('net_premium') || this.f('netAmount');
-    if (ff) return this.fmtAmt(ff);
-    const t = this.totalNum();
-    return t ? Math.round(t / 1.18).toLocaleString('en-IN') : '—';
+    const n = this.netNum();
+    return n ? n.toLocaleString('en-IN') : '—';
   }
 
   calcGST(): string {
-    const ff = this.f('gstAmount') || this.f('gst') || this.f('GST');
+    const ff = this.f('gstAmount', 'gst', 'GST', 'GST PREMIUM', 'gst premium');
     if (ff) return this.fmtAmt(ff);
     const t = this.totalNum();
     return t ? Math.round(t - t / 1.18).toLocaleString('en-IN') : '—';
   }
 
-  calcBasicOD(): string  { 
-    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
-    const n = parseFloat(npStr) || this.totalNum() / 1.18;
-    return n ? Math.round(n * 0.65).toLocaleString('en-IN') : '—'; 
+  calcBasicOD(): string {
+    // Use actual field if available, else 65% of net premium
+    const ff = this.f('basicODPremium', 'BASIC PREMIUM', 'basic premium', 'basic od', 'basicOD');
+    if (ff) return this.fmtAmt(ff);
+    const n = this.netNum();
+    return n ? Math.round(n * 0.65).toLocaleString('en-IN') : '—';
   }
-  calcNCB(): string      { 
-    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
-    const n = parseFloat(npStr) || this.totalNum() / 1.18;
-    return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—'; 
+
+  calcNCB(): string {
+    // Use actual field if available, else 10% of net premium
+    const ff = this.f('ncb', 'NCB', 'noClaimBonus', 'no claim bonus', 'bonus');
+    if (ff) return this.fmtAmt(ff);
+    const n = this.netNum();
+    return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—';
   }
-  calcZeroDep(): string  { 
-    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
-    const n = parseFloat(npStr) || this.totalNum() / 1.18;
-    return n ? Math.round(n * 0.35).toLocaleString('en-IN') : '—'; 
+
+  calcZeroDep(): string {
+    // Use actual field if available, else 35% of net premium
+    const ff = this.f('zeroDepPremium', 'ZERO DEP', 'zero dep', 'zeroDep', 'zeroDepPremium');
+    if (ff) return this.fmtAmt(ff);
+    const n = this.netNum();
+    return n ? Math.round(n * 0.35).toLocaleString('en-IN') : '—';
   }
-  calcAddOn(): string    { 
-    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
-    const n = parseFloat(npStr) || this.totalNum() / 1.18;
-    return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—'; 
+
+  calcAddOn(): string {
+    // Use actual field if available, else 10% of net premium
+    const ff = this.f('addOnPremium', 'withAddOnPremium', 'addOn', 'ADD ON', 'add on');
+    if (ff) return this.fmtAmt(ff);
+    const n = this.netNum();
+    return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—';
   }
 }

@@ -156,36 +156,43 @@ async def upload_file(
         if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
             raise HTTPException(status_code=400, detail="Only Excel (.xlsx, .xls) and CSV files are supported.")
 
-        await sheets_collection.update_one(
-            {"user_id": uid, "name": sheet_name},
-            {"$setOnInsert": {"user_id": uid, "name": sheet_name, "created_at": datetime.utcnow()}},
-            upsert=True
-        )
-
         records, columns, vehicle_col = services.parse_and_normalize(content, filename, sheet_name)
         if not records:
             return {"message": "No valid vehicle data found.", "count": 0, "columns": columns,
                     "vehicle_col": vehicle_col, "inserted": 0, "updated": 0, "total_processed": 0}
 
+        # ── Dynamically create each sheet referenced in the parsed records ──
+        unique_sheets = list({r["sheet_name"] for r in records})
+        for sname in unique_sheets:
+            await sheets_collection.update_one(
+                {"user_id": uid, "name": sname},
+                {"$setOnInsert": {"user_id": uid, "name": sname, "created_at": datetime.utcnow()}},
+                upsert=True
+            )
+
         inserted_count = updated_count = 0
         for record in records:
+            rec_sheet = record["sheet_name"]
             record["user_id"] = uid
             res = await vehicles_collection.update_one(
-                {"user_id": uid, "vehicle_number": record["vehicle_number"], "sheet_name": sheet_name},
+                {"user_id": uid, "vehicle_number": record["vehicle_number"], "sheet_name": rec_sheet},
                 {"$set": record}, upsert=True)
             if res.upserted_id:
                 inserted_count += 1
             else:
                 updated_count += 1
 
+        # Use the first sheet name for the upload log
+        primary_sheet = unique_sheets[0] if unique_sheets else sheet_name
         await uploads_collection.insert_one({
             "user_id": uid, "filename": file.filename, "timestamp": datetime.utcnow(),
             "inserted": inserted_count, "updated": updated_count,
-            "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD, "sheet_name": sheet_name,
+            "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD, "sheet_name": primary_sheet,
         })
         return {"message": "File processed successfully", "inserted": inserted_count,
                 "updated": updated_count, "total_processed": len(records),
-                "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD, "sheet_name": sheet_name}
+                "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD,
+                "sheet_name": primary_sheet, "sheets_created": unique_sheets}
 
     except HTTPException:
         raise
@@ -202,19 +209,27 @@ async def upload_file(
 async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
                          current_user: Dict = Depends(get_current_user)):
     uid = _owner(current_user)
-    v_num = vehicle_number.replace(" ", "").upper().strip()
+    # Normalize: remove spaces, dashes, uppercase — handle any plate format
+    v_num = vehicle_number.replace(" ", "").replace("-", "").upper().strip()
+
+    # ── Global cross-sheet search: do NOT filter by sheet ──
+    # The sheet param is still accepted for backward compat but NOT used as a strict filter.
+    # We search all sheets owned by this user for the vehicle number.
     query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
-    if sheet:
-        query["sheet_name"] = clean(sheet)
 
     vehicle = await vehicles_collection.find_one(query, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail=f"No record found for vehicle number: {v_num}")
+
     raw_data = vehicle.get("data", {})
-    structured = {field: raw_data.get(field, "") for field in FIXED_FIELDS}
+    # Build the structured response: start with all FIXED_FIELDS, then append any extra columns
+    structured: Dict[str, Any] = {}
+    for field in FIXED_FIELDS:
+        structured[field] = raw_data.get(field, "")
     for k, v in raw_data.items():
         if k not in structured:
             structured[k] = v
+
     return {"vehicle_number": vehicle["vehicle_number"], "sheet_name": vehicle.get("sheet_name", "default"),
             "data": structured}
 
