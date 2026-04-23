@@ -188,7 +188,11 @@ export class LoginComponent {
       this.authService.forgotPassword({ email: this.email.trim().toLowerCase() }).subscribe({
         next: (res: any) => {
           this.loading = false;
-          alert('OTP sent! Please check your email inbox (and spam folder).');
+          if (res.dev_otp) {
+            alert(`SMTP is not configured! Here is your Test OTP: ${res.dev_otp}`);
+          } else {
+            alert('OTP sent! Please check your email inbox (and spam folder).');
+          }
           this.mode = 'reset_password';
         },
         error: (err: any) => {

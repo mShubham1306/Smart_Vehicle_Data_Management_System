@@ -332,8 +332,24 @@ export class InsuranceDocComponent implements OnChanges {
     return t ? Math.round(t - t / 1.18).toLocaleString('en-IN') : '—';
   }
 
-  calcBasicOD(): string  { const t = this.totalNum(); return t ? Math.round(t * 0.557).toLocaleString('en-IN') : '—'; }
-  calcNCB(): string      { const t = this.totalNum(); return t ? Math.round(t * 0.112).toLocaleString('en-IN') : '—'; }
-  calcZeroDep(): string  { const t = this.totalNum(); return t ? Math.round(t * 0.403).toLocaleString('en-IN') : '—'; }
-  calcAddOn(): string    { const t = this.totalNum(); return t ? Math.round(t * 0.960).toLocaleString('en-IN') : '—'; }
+  calcBasicOD(): string  { 
+    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
+    const n = parseFloat(npStr) || this.totalNum() / 1.18;
+    return n ? Math.round(n * 0.65).toLocaleString('en-IN') : '—'; 
+  }
+  calcNCB(): string      { 
+    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
+    const n = parseFloat(npStr) || this.totalNum() / 1.18;
+    return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—'; 
+  }
+  calcZeroDep(): string  { 
+    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
+    const n = parseFloat(npStr) || this.totalNum() / 1.18;
+    return n ? Math.round(n * 0.35).toLocaleString('en-IN') : '—'; 
+  }
+  calcAddOn(): string    { 
+    const npStr = this.calcNet().replace(/[^0-9.-]+/g, '');
+    const n = parseFloat(npStr) || this.totalNum() / 1.18;
+    return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—'; 
+  }
 }

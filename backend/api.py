@@ -122,8 +122,11 @@ async def get_sheet_columns(name: str, current_user: Dict = Depends(get_current_
     ordered = [f for f in FIXED_FIELDS if f in all_cols]
     extras  = [k for k in all_cols if k not in FIXED_FIELDS]
     columns = ordered + extras
-    # Return actual columns — empty list means sheet has no data yet (frontend shows upload prompt)
-    return {"sheet_name": name, "columns": columns, "has_data": bool(columns)}
+    # If the sheet has no data yet, provide the FIXED_FIELDS so the frontend form has baseline fields to populate
+    if not columns:
+        columns = FIXED_FIELDS
+        
+    return {"sheet_name": name, "columns": columns, "has_data": bool(all_cols)}
 
 
 # ─────────────────────────────────────────────────────────────

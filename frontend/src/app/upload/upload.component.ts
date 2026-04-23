@@ -214,7 +214,14 @@ export class UploadComponent implements OnInit, OnDestroy {
 
   upload(file: File) {
     this.result = null; this.error = ''; this.uploading = true;
-    this.ds.uploadFile(file, this.activeSheet).subscribe({
+    
+    // Auto-name sheet from filename if the target is 'default'
+    let target = this.activeSheet;
+    if (this.activeSheet === 'default' && this.isAdmin) {
+      target = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+    }
+
+    this.ds.uploadFile(file, target).subscribe({
       next: res => { this.result = res; this.uploading = false; },
       error: err => { this.error = err.error?.detail || 'Upload failed. Please try again.'; this.uploading = false; }
     });

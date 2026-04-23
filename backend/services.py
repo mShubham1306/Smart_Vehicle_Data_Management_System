@@ -121,6 +121,11 @@ COLUMN_ALIASES: Dict[str, str] = {
     "policy number": "vehicleInsurancePolicyNumber",
     "policy no": "vehicleInsurancePolicyNumber",
     "policy": "vehicleInsurancePolicyNumber",
+    
+    # First/Last Name Handling (will be merged into ownerName)
+    "first name": "firstName", "firstname": "firstName", "firts name": "firstName",
+    "last name": "lastName", "lastname": "lastName", "last value": "lastName", "lastvalue": "lastName",
+    "customer name": "ownerName", "insured name": "ownerName",
 }
 
 
@@ -162,9 +167,16 @@ def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
         for field in FIXED_FIELDS:
             data[field] = row_dict.get(field, "")
 
+        # Merge first and last names if ownerName is missing
+        if not data.get("ownerName"):
+            fname = row_dict.get("firstName", "").strip()
+            lname = row_dict.get("lastName", "").strip()
+            if fname or lname:
+                data["ownerName"] = f"{fname} {lname}".strip()
+                
         # Also store any extra columns from the file not in fixed schema
         for k, v in row_dict.items():
-            if k not in data:
+            if k not in data and k not in ("firstName", "lastName"):
                 data[k] = v
 
         records.append({
