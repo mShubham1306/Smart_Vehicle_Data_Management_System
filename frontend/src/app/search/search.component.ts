@@ -121,7 +121,7 @@ import { Subscription } from 'rxjs';
           </app-insurance-doc>
         </div>
 
-        <!-- ✅ FULLY DYNAMIC Card View — shows ALL actual fields from the stored record -->
+        <!-- ✅ FULLY DYNAMIC Card View — smartly grouped, skips empty -->
         <div *ngIf="viewMode==='card'" class="rounded-2xl overflow-hidden" style="background:#141414; border:1px solid #262626">
           <!-- Header -->
           <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
@@ -130,9 +130,9 @@ import { Subscription } from 'rxjs';
               <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
                 style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25)">🚗</div>
               <div>
-                <p class="text-[10px] text-textGray uppercase tracking-widest font-semibold mb-1">Vehicle Number</p>
+                <p class="text-[10px] text-textGray uppercase tracking-widest font-semibold mb-1">Vehicle Match</p>
                 <h2 class="text-2xl font-extrabold font-mono tracking-widest text-textLight">{{ result.vehicle_number }}</h2>
-                <p class="text-[10px] text-textGray mt-0.5">Sheet: <span style="color:#a5b4fc">{{ result.sheet_name }}</span></p>
+                <p class="text-[10px] text-textGray mt-0.5">Source: <span style="color:#a5b4fc">{{ result.sheet_name }}</span></p>
               </div>
             </div>
             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
@@ -141,24 +141,40 @@ import { Subscription } from 'rxjs';
             </span>
           </div>
 
-          <!-- Dynamic Fields Grid — ALL fields from the actual record -->
-          <div class="p-5">
-            <div *ngIf="allFields.length === 0" class="text-center py-10 text-textGray text-sm">No fields found in the record.</div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              <ng-container *ngFor="let field of allFields">
-                <div class="field-card"
-                  [class.sm:col-span-2]="isWide(field)"
-                  [style.border-color]="field === 'Vehicle' ? 'rgba(239,68,68,0.4)' : ''">
-                  <div class="flex items-center gap-1 mb-1">
-                    <p class="field-label">{{ getLabel(field) }}</p>
-                    <span *ngIf="field === 'Vehicle'" style="font-size:0.55rem;background:rgba(239,68,68,0.2);color:#ef4444;padding:1px 5px;border-radius:4px;font-weight:800;letter-spacing:0.5px">KEY</span>
-                  </div>
-                  <p class="field-value" [class.empty]="!getVal(field)">
-                    {{ getVal(field) || '—' }}
-                  </p>
-                </div>
-              </ng-container>
+          <!-- PRIMARY FIELDS ROW (always at top) -->
+          <div *ngIf="primaryFields.length > 0" class="px-6 py-5" style="border-bottom:1px solid #262626; background:rgba(255,255,255,0.02)">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div *ngFor="let field of primaryFields" class="flex flex-col gap-1">
+                <p class="text-[10px] text-textGray uppercase tracking-widest font-bold">{{ getLabel(field) }}</p>
+                <p class="text-base font-bold text-textLight break-words">{{ getVal(field) }}</p>
+              </div>
             </div>
+          </div>
+
+          <!-- DYNAMIC GROUPED FIELDS -->
+          <div class="p-6 flex flex-col gap-8">
+            <div *ngIf="fieldGroups.length === 0 && primaryFields.length === 0" class="text-center py-10 text-textGray text-sm">
+              No additional data fields found in the record.
+            </div>
+            
+            <ng-container *ngFor="let group of fieldGroups">
+              <div class="group-section">
+                <!-- Group Header -->
+                <div class="flex items-center gap-3 mb-4 pl-1">
+                  <h3 class="text-xs font-bold text-textGray uppercase tracking-widest">{{ group.title }}</h3>
+                  <div class="h-px bg-[#333] flex-1"></div>
+                </div>
+                <!-- Group Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  <div *ngFor="let field of group.fields" class="field-card" [class.sm:col-span-2]="isWide(field)">
+                    <div class="flex items-center gap-1 mb-1">
+                      <p class="field-label">{{ getLabel(field) }}</p>
+                    </div>
+                    <p class="field-value">{{ getVal(field) }}</p>
+                  </div>
+                </div>
+              </div>
+            </ng-container>
           </div>
         </div>
       </div>
@@ -183,6 +199,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   generating = false;
   viewMode: 'document' | 'card' = 'document';
   allFields: string[] = [];
+  primaryFields: string[] = [];
+  fieldGroups: { title: string, fields: string[] }[] = [];
   private sub = new Subscription();
 
   constructor(private ds: DataService, private authService: AuthService) {}
@@ -196,20 +214,21 @@ export class SearchComponent implements OnInit, OnDestroy {
   search() {
     const q = this.query.trim();
     if (!q) return;
-    this.loading = true; this.error = ''; this.result = null; this.allFields = [];
+    this.loading = true; this.error = ''; this.result = null; 
+    this.allFields = []; this.primaryFields = []; this.fieldGroups = [];
 
     this.ds.searchVehicle(q).subscribe({
       next: res => {
         this.result = res;
         this.loading = false;
         this.viewMode = 'document';
-        // ✅ Build field list from ALL keys in the actual returned data object
-        // This is 100% dynamic — reflects whatever columns are in the stored record
+        // Build dynamic field list from ALL keys
         if (res?.data) {
-          // Filter out empty-looking system keys; keep all real data fields
-          this.allFields = Object.keys(res.data).filter(k =>
+          const keys = Object.keys(res.data).filter(k =>
             k && !k.startsWith('Unnamed') && k.toLowerCase() !== 'nan'
           );
+          this.allFields = keys;
+          this.buildGroups(keys);
         }
       },
       error: err => {
@@ -217,6 +236,64 @@ export class SearchComponent implements OnInit, OnDestroy {
         this.loading = false;
       }
     });
+  }
+
+  /** Smartly group non-empty fields into UI sections */
+  buildGroups(keys: string[]) {
+    this.primaryFields = [];
+    this.fieldGroups = [];
+
+    const primary: string[] = [];
+    const veh: string[] = [];
+    const own: string[] = [];
+    const ins: string[] = [];
+    const oth: string[] = [];
+
+    keys.forEach(k => {
+      const val = this.getVal(k);
+      if (!val) return; // Skip empty/null/nan fields completely
+
+      const lower = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      // 1. Primary Priority (Vehicle, Owner, Mobile)
+      if (
+        k === 'Vehicle' || lower === 'vehicle' || lower.includes('vehicleno') || lower.includes('vehiclenumber') || lower.includes('regno') || lower.includes('plateno') ||
+        k === 'ownerName' || lower.includes('ownername') || lower.includes('customername') || lower === 'name' ||
+        k === 'ownerMobileNo' || lower.includes('mobile') || lower.includes('phone') || lower.includes('contact')
+      ) {
+        primary.push(k);
+      }
+      // 2. Vehicle Info
+      else if (
+        ['enginenum', 'chassisnum', 'vehiclemake', 'vehiclemodel', 'vehicleclass', 'fueltype', 'vehiclemanufacturername', 'model'].includes(lower) || 
+        lower.includes('engine') || lower.includes('chassis') || lower.includes('make') || lower.includes('model') || lower.includes('fuel') || lower.includes('mfg')
+      ) {
+        veh.push(k);
+      }
+      // 3. Owner Info
+      else if (
+        ['owneraddress'].includes(lower) || lower.includes('address') || lower.includes('email') || lower.includes('city') || lower.includes('state') || lower.includes('pincode') || lower.includes('dob') || lower.includes('gender')
+      ) {
+        own.push(k);
+      }
+      // 4. Insurance Info
+      else if (
+        ['vehicleinsurancecompanyname', 'expiredinsuranceupto', 'vehicleinsurancepolicynumber', 'basicodpremium', 'zerodeppremium', 'ncb', 'idv', 'netpremium', 'gstamount', 'totalpremium', 'saleamount'].includes(lower) || 
+        lower.includes('policy') || lower.includes('premium') || lower.includes('insurance') || lower.includes('idv') || lower.includes('ncb') || lower.includes('od') || lower.includes('gst')
+      ) {
+        ins.push(k);
+      }
+      // 5. Other
+      else {
+        oth.push(k);
+      }
+    });
+
+    this.primaryFields = primary;
+    if (veh.length) this.fieldGroups.push({ title: 'Vehicle Info', fields: veh });
+    if (own.length) this.fieldGroups.push({ title: 'Owner Info', fields: own });
+    if (ins.length) this.fieldGroups.push({ title: 'Insurance Info', fields: ins });
+    if (oth.length) this.fieldGroups.push({ title: 'Other Details', fields: oth });
   }
 
   /** Get display value for a field from result.data */
