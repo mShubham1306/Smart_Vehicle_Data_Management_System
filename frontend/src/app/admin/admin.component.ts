@@ -117,6 +117,41 @@ const API = environment.apiUrl;
           </table>
         </div>
       </div>
+
+      <!-- ── Data Tools ── -->
+      <div class="rounded-2xl p-6 mt-8" style="background:#141414; border:1px solid #262626">
+        <h2 class="text-base font-bold text-textLight mb-1 flex items-center gap-2">🔧 Data Tools</h2>
+        <p class="text-[10px] text-textGray mb-5">Use these to diagnose and repair data upload issues.</p>
+
+        <div class="flex flex-wrap gap-3 mb-4">
+          <!-- Diagnose -->
+          <button (click)="diagnose()" [disabled]="diagnosing"
+            class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+            style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3); color:#a5b4fc">
+            {{ diagnosing ? '⏳ Checking…' : '🔍 Diagnose DB' }}
+          </button>
+
+          <!-- Fix vehicle numbers -->
+          <button (click)="fixVehicleNumbers()" [disabled]="migrating"
+            class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+            style="background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.25); color:#22c55e">
+            {{ migrating ? '⏳ Fixing…' : '🔄 Fix Vehicle Numbers' }}
+          </button>
+
+          <!-- Purge bad records -->
+          <button (click)="purgeBad()" [disabled]="purging"
+            class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+            style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); color:#ef4444">
+            {{ purging ? '⏳ Purging…' : '🗑 Purge Bad Records' }}
+          </button>
+        </div>
+
+        <!-- Tool result output -->
+        <div *ngIf="toolResult" class="rounded-xl p-4 text-xs font-mono leading-relaxed"
+          style="background:#0b0b0b; border:1px solid #262626; color:#a1a1aa; white-space:pre-wrap; max-height:220px; overflow-y:auto">
+          {{ toolResult }}
+        </div>
+      </div>
     </div>
   `
 })
@@ -128,6 +163,11 @@ export class AdminComponent implements OnInit {
   createError = false;
 
   newUser = { username: '', password: '' };
+  diagnosing = false;
+  migrating = false;
+  purging = false;
+  toolResult = '';
+
 
   constructor(private http: HttpClient) {}
 
@@ -177,14 +217,45 @@ export class AdminComponent implements OnInit {
   resetPassword(u: WorkerUser) {
     const newPass = prompt(`Enter new password for ${u.username} (min 6 characters):`);
     if (newPass === null) return;
-    if (newPass.length < 6) {
-      alert('Password must be at least 6 characters.');
-      return;
-    }
-    
+    if (newPass.length < 6) { alert('Password must be at least 6 characters.'); return; }
     this.http.patch<any>(`${API}/admin/users/${u.id}`, { password: newPass }).subscribe({
       next: () => alert(`Password for ${u.username} updated successfully.`),
       error: err => alert(err.error?.detail || 'Update failed.')
+    });
+  }
+
+  diagnose() {
+    this.diagnosing = true; this.toolResult = '';
+    this.http.get<any>(`${API}/admin/diagnose`).subscribe({
+      next: res => {
+        this.toolResult = JSON.stringify(res, null, 2);
+        this.diagnosing = false;
+      },
+      error: err => { this.toolResult = 'Error: ' + (err.error?.detail || err.message); this.diagnosing = false; }
+    });
+  }
+
+  fixVehicleNumbers() {
+    if (!confirm('This will scan all your records and try to recover vehicle numbers from stored data. Continue?')) return;
+    this.migrating = true; this.toolResult = '';
+    this.http.post<any>(`${API}/admin/migrate/fix-vehicle-numbers`, {}).subscribe({
+      next: res => {
+        this.toolResult = JSON.stringify(res, null, 2);
+        this.migrating = false;
+      },
+      error: err => { this.toolResult = 'Error: ' + (err.error?.detail || err.message); this.migrating = false; }
+    });
+  }
+
+  purgeBad() {
+    if (!confirm('This will permanently DELETE all records with empty vehicle numbers. They can be recovered by re-uploading the file. Continue?')) return;
+    this.purging = true; this.toolResult = '';
+    this.http.delete<any>(`${API}/admin/purge-bad-records`).subscribe({
+      next: res => {
+        this.toolResult = JSON.stringify(res, null, 2);
+        this.purging = false;
+      },
+      error: err => { this.toolResult = 'Error: ' + (err.error?.detail || err.message); this.purging = false; }
     });
   }
 }

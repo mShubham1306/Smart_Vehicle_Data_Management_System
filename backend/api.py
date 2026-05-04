@@ -539,3 +539,109 @@ async def delete_worker(user_id: str, current_user: Dict = Depends(require_admin
         raise HTTPException(status_code=404, detail="Worker not found or not yours to delete.")
     await users_collection.delete_one({"_id": obj_id})
     return {"message": "Worker deleted."}
+
+
+# ─────────────────────────────────────────────────────────────
+# Admin — Diagnostics & Migration
+# ─────────────────────────────────────────────────────────────
+
+import re as _re
+
+_PLATE_RE = _re.compile(r'^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{1,4}$', _re.IGNORECASE)
+
+
+def _looks_like_plate(v: str) -> bool:
+    return bool(_PLATE_RE.match(_re.sub(r'[^A-Z0-9]', '', str(v).upper().strip())))
+
+
+@router.get("/admin/diagnose")
+async def diagnose(current_user: Dict = Depends(require_admin)):
+    """Show DB state: total records, samples of vehicle_number & data keys per sheet."""
+    uid = current_user["id"]
+    total = await vehicles_collection.count_documents({"user_id": uid})
+    empty_vn = await vehicles_collection.count_documents({"user_id": uid, "vehicle_number": {"$in": ["", None]}})
+
+    sheets_cur = sheets_collection.find({"user_id": uid}, {"_id": 0, "name": 1})
+    sheet_names = [s["name"] for s in await sheets_cur.to_list(length=100)]
+
+    sheet_info = []
+    for sname in sheet_names:
+        count = await vehicles_collection.count_documents({"user_id": uid, "sheet_name": sname})
+        sample = await vehicles_collection.find_one({"user_id": uid, "sheet_name": sname}, {"vehicle_number": 1, "data": 1})
+        sheet_info.append({
+            "sheet": sname, "count": count,
+            "sample_vn": sample.get("vehicle_number") if sample else None,
+            "sample_data_keys": list(sample.get("data", {}).keys())[:10] if sample else [],
+        })
+
+    return {
+        "total_records": total,
+        "empty_vehicle_number_records": empty_vn,
+        "sheets": sheet_info,
+    }
+
+
+@router.post("/admin/migrate/fix-vehicle-numbers")
+async def migrate_fix_vehicle_numbers(current_user: Dict = Depends(require_admin)):
+    """
+    Scan ALL records for this admin. For any record with empty/missing vehicle_number,
+    try to recover a plate number from its stored data fields using plate-regex detection.
+    Updates the record in-place. Returns counts of fixed / unfixed records.
+    """
+    uid = current_user["id"]
+    fixed = 0
+    unfixable = 0
+    total_scanned = 0
+
+    # Process all records — not just empty ones — to also re-normalize plates
+    cursor = vehicles_collection.find({"user_id": uid}, {"_id": 1, "vehicle_number": 1, "data": 1, "sheet_name": 1})
+    async for doc in cursor:
+        total_scanned += 1
+        vn = str(doc.get("vehicle_number", "")).strip()
+        data = doc.get("data", {})
+
+        # If vehicle_number already looks good, skip
+        if vn and _looks_like_plate(vn):
+            continue
+
+        # Try every field in data to find a plate-like value
+        found_plate = None
+        for key, val in data.items():
+            candidate = _re.sub(r'[^A-Z0-9]', '', str(val).upper().strip())
+            if candidate and _looks_like_plate(candidate):
+                found_plate = candidate
+                break
+
+        if found_plate:
+            # Update vehicle_number and also fix the Vehicle field in data
+            data["Vehicle"] = found_plate
+            await vehicles_collection.update_one(
+                {"_id": doc["_id"]},
+                {"$set": {"vehicle_number": found_plate, "data": data}}
+            )
+            fixed += 1
+        else:
+            unfixable += 1
+
+    return {
+        "message": f"Migration complete. Fixed={fixed}, Unfixable={unfixable}, Total scanned={total_scanned}",
+        "fixed": fixed,
+        "unfixable": unfixable,
+        "total_scanned": total_scanned,
+        "action_needed": "Re-upload files for any unfixable records." if unfixable > 0 else "All records are now searchable.",
+    }
+
+
+@router.delete("/admin/purge-bad-records")
+async def purge_bad_records(current_user: Dict = Depends(require_admin)):
+    """Delete records that have empty vehicle_number (they cannot be searched) so the file can be cleanly re-uploaded."""
+    uid = current_user["id"]
+    result = await vehicles_collection.delete_many({
+        "user_id": uid,
+        "vehicle_number": {"$in": ["", None]}
+    })
+    return {
+        "message": f"Deleted {result.deleted_count} records with empty vehicle_number. Re-upload your file to restore them.",
+        "deleted": result.deleted_count,
+    }
+

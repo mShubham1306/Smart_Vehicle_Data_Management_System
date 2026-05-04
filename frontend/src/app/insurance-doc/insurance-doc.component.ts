@@ -284,18 +284,53 @@ export class InsuranceDocComponent implements OnChanges {
   @Input() data: any = null;
   @Input() vehicleNumber: string = '';
 
-  ngOnChanges(_c: SimpleChanges) {}
+  ngOnChanges(_c: SimpleChanges) {
+    // Pre-build a normalized key map once per data change for fast lookups
+    this._normMap = {};
+    if (this.data) {
+      for (const k of Object.keys(this.data)) {
+        const norm = k.toLowerCase().replace(/[\s_\-\.]+/g, '');
+        this._normMap[norm] = k;
+      }
+    }
+  }
 
-  /** Safe multi-key field getter — tries each key until a non-empty value is found */
+  private _normMap: Record<string, string> = {};
+  private _junk = new Set(['', 'nan', 'none', 'null', 'n/a', 'na', '-', '0', 'undefined']);
+
+  private _val(raw: any): string {
+    if (raw === null || raw === undefined) return '';
+    const s = String(raw).trim();
+    return this._junk.has(s.toLowerCase()) ? '' : s;
+  }
+
+  /**
+   * 3-tier safe field getter:
+   * 1. Exact key match (fastest)
+   * 2. Normalized key contains any of the search words (handles OWNER_NAME, ownerName, Owner Name, etc.)
+   * 3. Returns '' if nothing found
+   */
   f(...keys: string[]): string {
     if (!this.data) return '';
+
+    // Tier 1: exact key match
     for (const key of keys) {
-      const v = this.data[key];
-      if (v === undefined || v === null) continue;
-      const s = String(v).trim();
-      if (['', 'nan', 'none', 'null', 'n/a', 'na', '-', '0'].includes(s.toLowerCase())) continue;
-      return s;
+      const v = this._val(this.data[key]);
+      if (v) return v;
     }
+
+    // Tier 2: normalized substring scan of all stored keys
+    for (const key of keys) {
+      const searchNorm = key.toLowerCase().replace(/[\s_\-\.]+/g, '');
+      // Try: stored key normalized contains the search word, OR vice versa
+      for (const [norm, realKey] of Object.entries(this._normMap)) {
+        if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
+          const v = this._val(this.data[realKey]);
+          if (v) return v;
+        }
+      }
+    }
+
     return '';
   }
 
