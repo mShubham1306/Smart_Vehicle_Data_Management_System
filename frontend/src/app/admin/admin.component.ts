@@ -22,14 +22,14 @@ const API = environment.apiUrl;
   template: `
     <div style="font-family:'Inter',sans-serif">
       <div class="mb-8">
-        <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Manage Workers</h1>
-        <p class="text-sm text-textGray mt-1">Create worker accounts. Workers will see all your sheets automatically.</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Manage Users</h1>
+        <p class="text-sm text-textGray mt-1">Create user accounts. Users will see all your sheets automatically.</p>
       </div>
 
       <!-- Create Worker -->
       <div class="rounded-2xl p-6 mb-8" style="background:#141414; border:1px solid #262626">
         <h2 class="text-base font-bold text-textLight mb-5 flex items-center gap-2">
-          ➕ Create Worker Account
+          ➕ Create User Account
         </h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -45,7 +45,7 @@ const API = environment.apiUrl;
         </div>
         <div class="flex items-center gap-3 mt-4">
           <button (click)="createWorker()" [disabled]="creating" class="btn-red px-8 py-3 text-sm disabled:opacity-50">
-            <span *ngIf="!creating">👷 Create Worker</span>
+            <span *ngIf="!creating">👤 Create User</span>
             <span *ngIf="creating" class="flex items-center gap-2">
               <span class="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white animate-spin"></span>Creating…
             </span>
@@ -59,7 +59,7 @@ const API = environment.apiUrl;
       <!-- Worker List -->
       <div class="rounded-2xl overflow-hidden" style="background:#141414; border:1px solid #262626">
         <div class="px-6 py-4 flex items-center justify-between" style="border-bottom:1px solid #262626">
-          <h2 class="text-base font-bold text-textLight">Your Workers</h2>
+          <h2 class="text-base font-bold text-textLight">Your Users</h2>
           <button (click)="loadUsers()" class="text-xs text-textGray hover:text-textLight transition-colors px-3 py-1.5 rounded-lg"
             style="background:rgba(255,255,255,0.04); border:1px solid #333">🔄 Refresh</button>
         </div>
@@ -91,7 +91,7 @@ const API = environment.apiUrl;
                     [style.background]="u.role==='admin' ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)'"
                     [style.color]="u.role==='admin' ? '#ef4444' : '#60a5fa'"
                     [style.border]="u.role==='admin' ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(59,130,246,0.25)'">
-                    {{ u.role === 'admin' ? '👑 Admin' : '👷 Worker' }}
+                    {{ u.role === 'admin' ? '👑 Admin' : '👤 User' }}
                   </span>
                 </td>
                 <td class="px-4 py-4">
@@ -193,7 +193,7 @@ export class AdminComponent implements OnInit {
       username: username.trim().toLowerCase(), password
     }).subscribe({
       next: res => {
-        this.createMsg = `Worker "${res.username}" created. They can access all your sheets.`;
+        this.createMsg = `User "${res.username}" created. They can access all your sheets.`;
         this.createError = false;
         this.newUser = { username: '', password: '' };
         this.creating = false;

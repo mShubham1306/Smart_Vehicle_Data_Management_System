@@ -49,7 +49,7 @@ import { Subscription } from 'rxjs';
             [style.color]="isAdmin ? '#ef4444' : '#60a5fa'"
             [style.border]="isAdmin ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(59,130,246,0.25)'">
             <span class="w-1.5 h-1.5 rounded-full" [style.background]="isAdmin ? '#ef4444' : '#60a5fa'"></span>
-            {{ isAdmin ? '👑 Admin' : '👷 Worker' }}
+            {{ isAdmin ? '👑 Admin' : '👤 User' }}
           </span>
         </div>
 
@@ -98,7 +98,7 @@ import { Subscription } from 'rxjs';
             </div>
             <div class="overflow-hidden">
               <p class="text-xs font-bold text-textLight truncate">{{ user?.username || 'User' }}</p>
-              <p class="text-[10px] text-textGray truncate">{{ isAdmin ? 'Administrator' : 'Worker' }}</p>
+              <p class="text-[10px] text-textGray truncate">{{ isAdmin ? 'Administrator' : 'User' }}</p>
             </div>
           </div>
           <button (click)="logout()"
@@ -161,7 +161,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     { link: '/app/upload',    icon: '📂', label: 'Upload Data' },
     { link: '/app/search',    icon: '🔍', label: 'Search Vehicle' },
     { link: '/app/entry',     icon: '✏️', label: 'Data Entry' },
-    { link: '/app/admin',     icon: '👥', label: 'Manage Workers' },
+    { link: '/app/admin',     icon: '👥', label: 'Manage Users' },
   ];
 
   // Workers can ONLY access Search and Data Entry
@@ -175,7 +175,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     '/app/search':    { title:'Search Vehicle',  sub:'Lookup by plate number & view insurance document' },
     '/app/upload':    { title:'Upload Data',     sub:'Import Excel or CSV files' },
     '/app/entry':     { title:'Data Entry',      sub:'Add or update vehicle records' },
-    '/app/admin':     { title:'Manage Workers',  sub:'Create and manage worker accounts' },
+    '/app/admin':     { title:'Manage Users',  sub:'Create and manage user accounts' },
   };
 
   constructor(private router: Router, private authService: AuthService) {}

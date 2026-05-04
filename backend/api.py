@@ -1,9 +1,12 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Query, Depends
 from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, Optional
-from database import vehicles_collection, uploads_collection, schema_collection, sheets_collection, users_collection
+from database import (
+    vehicles_collection, uploads_collection, schema_collection,
+    sheets_collection, users_collection, learned_mappings_collection
+)
 import services
-from services import FIXED_FIELDS, VEHICLE_FIELD
+from services import FIXED_FIELDS, VEHICLE_FIELD, load_learned_cache_from_db
 from auth import get_current_user, require_admin
 from datetime import datetime, timedelta
 import traceback
@@ -156,7 +159,9 @@ async def upload_file(
         if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
             raise HTTPException(status_code=400, detail="Only Excel (.xlsx, .xls) and CSV files are supported.")
 
-        records, columns, vehicle_col = services.parse_and_normalize(content, filename, sheet_name)
+        records, columns, vehicle_col = services.parse_and_normalize(
+            content, filename, sheet_name, user_id=uid
+        )
         if not records:
             return {"message": "No valid vehicle data found.", "count": 0, "columns": columns,
                     "vehicle_col": vehicle_col, "inserted": 0, "updated": 0, "total_processed": 0}
@@ -645,3 +650,63 @@ async def purge_bad_records(current_user: Dict = Depends(require_admin)):
         "deleted": result.deleted_count,
     }
 
+
+# ─────────────────────────────────────────────────────────────
+# Schema Intelligence — Learned Mappings
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/admin/schema-intelligence")
+async def get_learned_mappings(current_user: Dict = Depends(require_admin)):
+    """Return all header→canonical mappings the system has learned for this admin."""
+    uid = current_user["id"]
+    # Also include global (user_id="system") mappings
+    cursor = learned_mappings_collection.find(
+        {"user_id": {"$in": [uid, "system"]}},
+        {"_id": 0, "normalized_header": 1, "original_header": 1,
+         "canonical_field": 1, "count": 1, "last_seen": 1}
+    ).sort("count", -1)
+    mappings = await cursor.to_list(length=500)
+    return {"total": len(mappings), "mappings": mappings}
+
+
+@router.post("/admin/schema-intelligence")
+async def teach_mapping(payload: Dict[str, Any], current_user: Dict = Depends(require_admin)):
+    """Manually teach the system: {header: 'Auto Reg ID', canonical: 'Vehicle'}."""
+    uid = current_user["id"]
+    header = str(payload.get("header", "")).strip()
+    canonical = str(payload.get("canonical", "")).strip()
+    if not header or not canonical:
+        raise HTTPException(status_code=400, detail="Both 'header' and 'canonical' are required.")
+    if canonical not in FIXED_FIELDS:
+        raise HTTPException(status_code=400, detail=f"'{canonical}' is not a valid canonical field name.")
+
+    norm_key = services.normalize_header_key(header)
+    await services.persist_learned_mapping(norm_key, canonical, header, uid)
+    return {"message": f"Taught: '{header}' → '{canonical}'", "normalized_key": norm_key}
+
+
+@router.delete("/admin/schema-intelligence/{header_norm}")
+async def delete_learned_mapping(header_norm: str, current_user: Dict = Depends(require_admin)):
+    """Delete a specific learned mapping by its normalized key."""
+    uid = current_user["id"]
+    result = await learned_mappings_collection.delete_one(
+        {"normalized_header": header_norm, "user_id": uid}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Mapping not found.")
+    # Also remove from in-memory cache
+    services._learned_cache.pop(header_norm, None)
+    return {"message": f"Deleted mapping for '{header_norm}'."}
+
+
+@router.get("/admin/startup-cache")
+async def warm_learned_cache(current_user: Dict = Depends(require_admin)):
+    """Reload learned mappings from DB into in-memory cache (useful after manual edits)."""
+    uid = current_user["id"]
+    cursor = learned_mappings_collection.find(
+        {"user_id": {"$in": [uid, "system"]}},
+        {"_id": 0, "normalized_header": 1, "canonical_field": 1}
+    )
+    mappings = await cursor.to_list(length=5000)
+    load_learned_cache_from_db(mappings)
+    return {"message": f"Cache reloaded with {len(mappings)} mappings."}
