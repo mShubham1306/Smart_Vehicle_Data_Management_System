@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 from typing import List, Dict, Any, Tuple, Optional
 from io import BytesIO
 import logging
@@ -39,70 +40,161 @@ FIXED_FIELDS = [
 # Main vehicle identifier column
 VEHICLE_FIELD = "Vehicle"
 
+# Regex pattern for Indian vehicle registration numbers
+# Handles: GJ06RC1934, MH12AB1234, DL1C1234, etc.
+_PLATE_REGEX = re.compile(
+    r'^[A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*\d{1,4}$',
+    re.IGNORECASE
+)
+
 # =============================================================================
 # SMART COLUMN DETECTION ENGINE
-# Each canonical field has a list of keyword patterns.
-# Scoring: count how many keywords appear in the normalized column name.
-# The field with the highest score wins.
+# =============================================================================
+# Each canonical field has scored keyword patterns.
+# Scoring: count how many keywords appear in normalized column name.
+# Higher score = better match. Longer / more specific keywords score higher.
 # =============================================================================
 COLUMN_PATTERNS: Dict[str, List[str]] = {
-    # Vehicle
-    "Vehicle": ["vehicle", "reg", "registration", "plate", "veh no", "number plate"],
-    # Sr. No.
-    "Sr. No.": ["sr", "serial", "s.no", "sno"],
-    # Engine
-    "engineNum": ["engine", "eng no", "eng num"],
-    # Chassis
-    "chassisNum": ["chassis", "ch no", "ch num"],
-    # Owner Name — keep together first before splitting
-    "ownerName": ["owner name", "ownername", "customer name", "insured name", "name of insured", "holder"],
-    # Owner Address
-    "ownerAddress": ["address", "owner address", "resident"],
-    # Vehicle Make
-    "vehicleMake": ["vehicle make", "make", "brand", "manufacturer make"],
-    # Vehicle Model
+
+    # ── VEHICLE NUMBER (highest priority, most variants) ──
+    "Vehicle": [
+        # Most specific multi-word forms first (score higher)
+        "vehicle registration number", "vehicle registration no",
+        "vehicle reg number", "vehicle reg no",
+        "vehicle number",  "vehicle no",  "vehicle no.",
+        "registration number", "registration no", "registration no.",
+        "reg number", "reg no", "reg no.", "reg.",
+        "regd no", "regd number", "regd. no",
+        "rto number", "rto no",
+        "plate number", "plate no",
+        "rc number", "rc no",
+        "number plate", "licence plate", "license plate",
+        "veh no", "veh. no", "veh no.", "veh number",
+        "vehicleno", "regno", "regn no", "regn",
+        "registration", "vehicle",
+    ],
+
+    # ── Sr. No. ──
+    "Sr. No.": ["sr no", "serial no", "s no", "sr.", "sno", "s.no", "serial number", "sr"],
+
+    # ── Engine ──
+    "engineNum": ["engine number", "engine no", "eng no", "eng num", "engine"],
+
+    # ── Chassis ──
+    "chassisNum": ["chassis number", "chassis no", "ch no", "ch num", "chassis"],
+
+    # ── Owner Name ──
+    "ownerName": [
+        "owner name", "ownername", "customer name", "insured name",
+        "name of insured", "policy holder", "holder name",
+        "insured", "owner", "name",
+    ],
+
+    # ── Owner Address ──
+    "ownerAddress": [
+        "owner address", "insured address", "customer address",
+        "address", "resident", "residence",
+    ],
+
+    # ── Vehicle Make ──
+    "vehicleMake": ["vehicle make", "make", "brand"],
+
+    # ── Vehicle Model ──
     "vehicleModel": ["vehicle model", "model variant", "veh model"],
-    # Vehicle Class
+
+    # ── Vehicle Class ──
     "vehicleClass": ["vehicle class", "class", "type"],
-    # Fuel
-    "fuelType": ["fuel", "fuel type"],
-    # Sale Amount (legacy total premium field)
+
+    # ── Fuel Type ──
+    "fuelType": ["fuel type", "fuel"],
+
+    # ── Sale Amount ──
     "saleAmount": ["sale amount", "saleamount"],
-    # Mobile
-    "ownerMobileNo": ["mobile", "phone", "contact", "mob no", "owner mobile"],
-    # Manufacturer (different from Make)
-    "vehicleManufacturerName": ["manufacturer", "vehiclemanufacturer"],
-    # Model variant / short name
+
+    # ── Mobile ──
+    "ownerMobileNo": [
+        "owner mobile no", "owner mobile", "mobile number", "mobile no",
+        "phone number", "phone no", "contact number", "contact no",
+        "mobile", "phone", "contact",
+    ],
+
+    # ── Manufacturer ──
+    "vehicleManufacturerName": ["vehicle manufacturer", "manufacturer name", "manufacturer"],
+
+    # ── Model short name ──
     "model": ["model"],
-    # Insurance company
-    "vehicleInsuranceCompanyName": ["insurance company", "insurer", "insurance com", "company name", "ins company", "insurance co"],
-    # Expiry / Due date
-    "expiredInsuranceUpto": ["expiry", "expired", "due date", "exp date", "policy expiry", "insurance upto"],
-    # Policy number
-    "vehicleInsurancePolicyNumber": ["policy", "policy no", "policy number"],
-    # ---- FINANCIAL FIELDS ----
-    "basicODPremium": ["basic premium", "basic od", "basic", "od premium", "base premium"],
-    "zeroDepPremium": ["zero dep", "zerodep", "zero depreciation", "nil dep"],
-    "ncb": ["ncb", "no claim bonus", "claim bonus"],
-    "idv": ["idv", "insured declared value", "insured value", "declared value"],
-    "netPremium": ["net premium", "nt premium", "net", "nt"],
-    "gstAmount": ["gst premium", "gst amount", "gst", "tax amount", "taxes"],
-    "totalPremium": ["total premium", "final premium", "gross premium", "total payable", "final", "total"],
+
+    # ── Insurance Company ──
+    "vehicleInsuranceCompanyName": [
+        "insurance company name", "insurance company",
+        "insurer name", "insurer", "ins company",
+        "insurance co", "ins co", "company name",
+    ],
+
+    # ── Expiry / Due Date ──
+    "expiredInsuranceUpto": [
+        "insurance expiry date", "policy expiry date", "expiry date",
+        "insurance expiry", "policy expiry", "insurance upto",
+        "expired upto", "expiry", "expired", "due date",
+        "exp date", "exp dt", "renewal date",
+    ],
+
+    # ── Policy Number ──
+    "vehicleInsurancePolicyNumber": [
+        "policy number", "policy no", "policy no.",
+        "insurance policy number", "insurance policy no",
+        "policy",
+    ],
+
+    # ── Financial Fields ──
+    "basicODPremium": [
+        "basic od premium", "basic od", "od premium",
+        "basic premium", "base premium", "basic",
+    ],
+    "zeroDepPremium": [
+        "zero depreciation premium", "zero dep premium",
+        "zero dep", "zero depreciation", "nil dep",
+        "zerodep", "zero-dep",
+    ],
+    "ncb": ["no claim bonus", "no claim", "ncb", "claim bonus"],
+    "idv": [
+        "insured declared value", "insured value", "declared value", "idv",
+    ],
+    "netPremium": ["net premium", "net amount", "nt premium", "net"],
+    "gstAmount": [
+        "gst premium", "gst amount", "gst 18", "gst@18",
+        "tax amount", "service tax", "taxes", "gst",
+    ],
+    "totalPremium": [
+        "total premium payable", "total premium", "gross premium",
+        "final premium", "total payable", "final amount",
+        "total amount", "total", "final",
+    ],
 }
 
 
 def normalize_col(col: str) -> str:
     """Normalize a column name for fuzzy matching."""
-    return str(col).strip().lower().replace("_", " ").replace("-", " ").replace(".", " ")
+    s = str(col).strip().lower()
+    # Replace separators and punctuation with spaces
+    s = re.sub(r'[_\-\./\\]+', ' ', s)
+    # Collapse multiple spaces
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip()
 
 
 def match_column(col: str) -> str:
     """
     Smart column matcher using keyword-scoring.
     Returns the best canonical field name, or the original col if no match scored > 0.
-    Also handles exact/substring matches for older FIXED_FIELDS as a fast-path.
+
+    Scoring rules:
+    - Each keyword match scores = word-count of the keyword (longer = more specific)
+    - Best score wins; ties broken by keyword length preference
     """
     normalized = normalize_col(col)
+    if not normalized:
+        return col.strip()
 
     best_match: Optional[str] = None
     best_score = 0
@@ -111,23 +203,59 @@ def match_column(col: str) -> str:
         score = 0
         for kw in keywords:
             if kw in normalized:
-                # Prefer longer/more specific keyword matches
                 score += len(kw.split())
         if score > best_score:
             best_score = score
             best_match = target
 
-    # If nothing matched, return original column name as-is
     if best_score == 0:
-        logger.debug(f"[ColMapper] No pattern match for column: '{col}'")
+        logger.debug(f"[ColMapper] No pattern match for column: '{col}' (normalized: '{normalized}')")
         return col.strip()
 
+    logger.info(f"[ColMapper] '{col}' → '{best_match}' (score={best_score})")
     return best_match  # type: ignore
 
 
 def normalize_vehicle_number(value: str) -> str:
-    """Remove spaces, uppercase the plate number."""
-    return str(value).replace(" ", "").replace("-", "").upper().strip()
+    """Normalize a vehicle plate number for storage and lookup."""
+    s = str(value).strip()
+    # Remove common separators and non-alphanumeric chars (but keep letters/digits)
+    s = re.sub(r'[^A-Za-z0-9]', '', s)
+    return s.upper()
+
+
+def _is_plate_value(val: str) -> bool:
+    """Return True if val looks like an Indian vehicle registration plate."""
+    clean = re.sub(r'\s', '', str(val).strip())
+    return bool(_PLATE_REGEX.match(clean))
+
+
+def _guess_vehicle_column(df: "pd.DataFrame") -> Optional[str]:
+    """
+    Plate-regex auto-detection fallback.
+    If no column was mapped to 'Vehicle', scan all columns and find the one
+    where the highest fraction of values match the plate regex.
+    Returns the column name that best matches, or None.
+    """
+    best_col: Optional[str] = None
+    best_ratio = 0.0
+
+    for col in df.columns:
+        # Skip already-mapped canonical columns
+        if col in FIXED_FIELDS and col != col:  # only skip canonical names
+            continue
+        values = df[col].dropna().astype(str)
+        if len(values) == 0:
+            continue
+        match_count = sum(1 for v in values if _is_plate_value(v))
+        ratio = match_count / len(values)
+        if ratio > best_ratio and ratio >= 0.3:  # At least 30% look like plates
+            best_ratio = ratio
+            best_col = col
+
+    if best_col:
+        logger.info(f"[ColMapper] Plate-regex fallback: column '{best_col}' looks like vehicle numbers ({best_ratio:.0%} match)")
+    return best_col
 
 
 def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
@@ -136,8 +264,20 @@ def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
     df = df.dropna(how="all")
     df = df.dropna(axis=1, how="all")
 
-    # Rename columns using the smart matcher
+    if df.empty:
+        return []
+
+    # Step 1: Map every column through the smart keyword scorer
     df = df.rename(columns=lambda c: match_column(str(c)))
+
+    # Step 2: If no 'Vehicle' column was found after mapping, run plate-regex fallback
+    if VEHICLE_FIELD not in df.columns:
+        fallback_col = _guess_vehicle_column(df)
+        if fallback_col:
+            logger.info(f"[ColMapper] Renaming '{fallback_col}' to '{VEHICLE_FIELD}' via plate-regex fallback")
+            df = df.rename(columns={fallback_col: VEHICLE_FIELD})
+        else:
+            logger.warning(f"[Upload] Sheet '{sheet_name}': no vehicle column detected. Columns: {list(df.columns)}")
 
     records = []
     for _, row in df.iterrows():
@@ -146,7 +286,7 @@ def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
             key = str(k).strip()
             if not key or key.startswith("Unnamed") or key.lower() in ("nan", "none", ""):
                 continue
-            row_dict[key] = str(v).strip() if v is not None else ""
+            row_dict[key] = str(v).strip() if pd.notna(v) else ""
 
         # Vehicle number is mandatory
         raw_vnum = row_dict.get(VEHICLE_FIELD, "") or row_dict.get("vehicle", "")
@@ -157,11 +297,10 @@ def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
         if not vnum:
             continue
 
-        # Build data: all known fixed + financial fields first, fill blanks
+        # Build data: all known fixed fields first, fill blanks
         data: Dict[str, str] = {}
         for field in FIXED_FIELDS:
             val = row_dict.get(field, "")
-            # Avoid persisting "nan" strings
             if val.lower() in ("nan", "none"):
                 val = ""
             data[field] = val
@@ -173,10 +312,13 @@ def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
             if fname or lname:
                 data["ownerName"] = f"{fname} {lname}".strip()
 
-        # Store ALL extra columns from the file that weren't mapped
+        # Preserve ALL extra columns from the file that weren't mapped to canonical fields
         for k, v in row_dict.items():
             if k not in data and k not in ("firstName", "lastName"):
                 data[k] = v
+
+        # Ensure the Vehicle field in data carries the normalized plate value
+        data[VEHICLE_FIELD] = vnum
 
         records.append({
             "vehicle_number": vnum,
@@ -184,6 +326,7 @@ def _process_dataframe(df: "pd.DataFrame", sheet_name: str) -> List[Dict]:
             "data": data,
         })
 
+    logger.info(f"[Upload] Sheet '{sheet_name}': parsed {len(records)} valid records from {len(df)} rows")
     return records
 
 
@@ -197,7 +340,7 @@ def parse_and_normalize(
     and return normalized records.
 
     For Excel files with multiple tabs:
-        - Each tab becomes its OWN named sheet (tab_name), 
+        - Each tab becomes its OWN named sheet (tab_name),
           completely ignoring the caller-supplied sheet_name.
     For single-tab Excel / CSV:
         - Records are tagged with the caller-supplied sheet_name.

@@ -8,17 +8,32 @@ import { Subscription } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 const KNOWN_LABELS: Record<string, string> = {
-  'Sr. No.': 'Sr. No.', 'Vehicle': 'Vehicle Number', 'engineNum': 'Engine Number',
+  'Sr. No.': 'Sr. No.', 'Vehicle': 'Vehicle Number *', 'engineNum': 'Engine Number',
   'chassisNum': 'Chassis Number', 'ownerName': 'Owner Name', 'ownerAddress': 'Owner Address',
   'vehicleMake': 'Vehicle Make', 'vehicleModel': 'Vehicle Model', 'vehicleClass': 'Vehicle Class',
   'fuelType': 'Fuel Type', 'saleAmount': 'Total Premium (₹)', 'ownerMobileNo': 'Mobile No.',
   'vehicleManufacturerName': 'Manufacturer', 'model': 'Model Variant',
   'vehicleInsuranceCompanyName': 'Insurance Company', 'expiredInsuranceUpto': 'Due Date',
   'vehicleInsurancePolicyNumber': 'Policy Number',
+  'basicODPremium': 'Basic OD Premium', 'zeroDepPremium': 'Zero Dep Premium',
+  'ncb': 'No Claim Bonus', 'idv': 'IDV', 'netPremium': 'Net Premium',
+  'gstAmount': 'GST Amount', 'totalPremium': 'Total Premium',
 };
 
-function labelFor(key: string): string {
-  return KNOWN_LABELS[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
+/** Return true if a column name looks like a vehicle/registration number field */
+function isVehicleKey(key: string): boolean {
+  const k = key.toLowerCase().replace(/[\s_\-\.]+/g, '');
+  return (
+    k === 'vehicle' || k === 'vehicleno' || k === 'vehiclenumber' ||
+    k === 'regno' || k === 'regnumber' || k === 'registrationno' || k === 'registrationnumber' ||
+    k === 'plateno' || k === 'platenumber' || k === 'rcno' || k === 'rcnumber' ||
+    k === 'rtono' || k === 'numberplate' || k === 'licenseplate' ||
+    k === 'vehicleregistration' || k === 'vehiclereg' ||
+    (k.includes('veh') && (k.includes('no') || k.includes('num') || k.includes('reg'))) ||
+    (k.includes('reg') && (k.includes('no') || k.includes('num'))) ||
+    (k.includes('plate') && (k.includes('no') || k.includes('num'))) ||
+    (k.includes('rc') && (k.includes('no') || k.includes('num')))
+  );
 }
 
 @Component({
@@ -113,19 +128,33 @@ function labelFor(key: string): string {
         <div class="flex items-center justify-between mb-4">
           <div>
             <h2 class="text-sm font-bold text-textLight">New Record — {{ activeSheet }}</h2>
-            <p class="text-[10px] text-textGray mt-0.5">{{ columns.length }} fields detected from sheet</p>
+            <p class="text-[10px] text-textGray mt-0.5">
+              {{ vehicleKey ? '' : '⚠ No vehicle column detected — ' }}
+              {{ columns.length }} fields
+              <span *ngIf="vehicleKey" style="color:#ef4444">· {{ vehicleKey }} is required</span>
+            </p>
           </div>
         </div>
 
         <div class="field-grid">
-          <div *ngFor="let col of columns" class="field-card"
-            [style.grid-column]="isWideField(col) ? 'span 2' : 'span 1'">
-            <label>{{ getLabel(col) }}</label>
-            <textarea *ngIf="isWideField(col)" [(ngModel)]="formData[col]"
-              [placeholder]="'Enter ' + getLabel(col)" rows="2"></textarea>
-            <input *ngIf="!isWideField(col)" type="text" [(ngModel)]="formData[col]"
-              [placeholder]="'Enter ' + getLabel(col)">
+          <!-- Vehicle key always rendered FIRST and highlighted -->
+          <div *ngIf="vehicleKey" class="field-card"
+            style="border-color:rgba(239,68,68,0.5); background:rgba(239,68,68,0.04)">
+            <label style="color:#ef4444">{{ getLabel(vehicleKey) }}</label>
+            <input type="text" [(ngModel)]="formData[vehicleKey]"
+              [placeholder]="'Enter vehicle / registration number'"
+              style="border-color:rgba(239,68,68,0.35)">
           </div>
+          <!-- All other fields -->
+          <ng-container *ngFor="let col of nonVehicleColumns">
+            <div class="field-card" [style.grid-column]="isWideField(col) ? 'span 2' : 'span 1'">
+              <label>{{ getLabel(col) }}</label>
+              <textarea *ngIf="isWideField(col)" [(ngModel)]="formData[col]"
+                [placeholder]="'Enter ' + getLabel(col)" rows="2"></textarea>
+              <input *ngIf="!isWideField(col)" type="text" [(ngModel)]="formData[col]"
+                [placeholder]="'Enter ' + getLabel(col)">
+            </div>
+          </ng-container>
         </div>
 
         <div class="flex items-center gap-4 mt-6 flex-wrap">
@@ -167,6 +196,12 @@ export class EntryComponent implements OnInit, OnDestroy {
   showNewSheet = false;
   newSheetName = '';
   creatingSheet = false;
+  /** The column that acts as the vehicle number key (auto-detected) */
+  vehicleKey: string | null = null;
+  /** All columns except the vehicle key — rendered after it */
+  get nonVehicleColumns(): string[] {
+    return this.columns.filter(c => c !== this.vehicleKey);
+  }
 
   private subs = new Subscription();
 
@@ -200,9 +235,12 @@ export class EntryComponent implements OnInit, OnDestroy {
     this.loadingCols = true;
     this.columns = [];
     this.formData = {};
+    this.vehicleKey = null;
     this.ds.getSheetColumns(sheet).subscribe({
       next: (res: any) => {
         this.columns = res.columns || [];
+        // Auto-detect the vehicle key from all columns
+        this.vehicleKey = this.columns.find(c => isVehicleKey(c)) ?? null;
         this.resetFormData();
         this.loadingCols = false;
       },
@@ -231,13 +269,19 @@ export class EntryComponent implements OnInit, OnDestroy {
   }
 
   save() {
-    const vehicleKey = this.columns.find(c => c === 'Vehicle' || c.toLowerCase().includes('vehicle'));
-    const vehicleNo = vehicleKey ? this.formData[vehicleKey] : '';
+    // Use the auto-detected vehicle key, or fall back to any column that looks like a vehicle
+    const vKey = this.vehicleKey ?? this.columns.find(c => isVehicleKey(c)) ?? null;
+    const vehicleNo = vKey ? (this.formData[vKey] || '').trim() : '';
+
     if (!vehicleNo) {
-      this.errorMsg = 'Vehicle number is required.'; this.successMsg = '';
-      setTimeout(() => this.errorMsg = '', 3000);
+      this.errorMsg = vKey
+        ? `"${vKey}" (vehicle number) is required.`
+        : 'No vehicle number column found. Please check the sheet schema.';
+      this.successMsg = '';
+      setTimeout(() => this.errorMsg = '', 4000);
       return;
     }
+
     this.saving = true; this.errorMsg = ''; this.successMsg = '';
     this.ds.saveVehicle({
       vehicle_number: vehicleNo,
@@ -246,7 +290,7 @@ export class EntryComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: () => {
         this.saving = false;
-        this.successMsg = `Record saved to sheet "${this.activeSheet}"`;
+        this.successMsg = `✅ Record saved to sheet "${this.activeSheet}"`;
         setTimeout(() => this.successMsg = '', 4000);
         this.resetFormData();
       },

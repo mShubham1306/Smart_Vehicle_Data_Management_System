@@ -209,20 +209,37 @@ async def upload_file(
 async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
                          current_user: Dict = Depends(get_current_user)):
     uid = _owner(current_user)
-    # Normalize: remove spaces, dashes, uppercase — handle any plate format
-    v_num = vehicle_number.replace(" ", "").replace("-", "").upper().strip()
+    # Normalize: strip ALL non-alphanumeric chars, uppercase
+    v_num = re.sub(r'[^A-Z0-9]', '', vehicle_number.upper().strip())
 
-    # ── Global cross-sheet search: do NOT filter by sheet ──
-    # The sheet param is still accepted for backward compat but NOT used as a strict filter.
-    # We search all sheets owned by this user for the vehicle number.
-    query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
+    # ── Step 1: Exact match across ALL sheets (global, no sheet filter) ──
+    vehicle = await vehicles_collection.find_one(
+        {"user_id": uid, "vehicle_number": v_num}, {"_id": 0}
+    )
 
-    vehicle = await vehicles_collection.find_one(query, {"_id": 0})
+    fuzzy_match = False
+
+    # ── Step 2: Fuzzy fallback — regex prefix on first 6 chars ──
+    if not vehicle and len(v_num) >= 4:
+        prefix = re.escape(v_num[:6]) if len(v_num) >= 6 else re.escape(v_num)
+        fuzzy_query = {
+            "user_id": uid,
+            "vehicle_number": {"$regex": f"^{prefix}", "$options": "i"}
+        }
+        vehicle = await vehicles_collection.find_one(fuzzy_query, {"_id": 0})
+        if vehicle:
+            fuzzy_match = True
+
     if not vehicle:
-        raise HTTPException(status_code=404, detail=f"No record found for vehicle number: {v_num}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No record found for vehicle number: {v_num}. "
+                   f"Check the plate format and ensure the file was uploaded with a recognisable vehicle column."
+        )
 
     raw_data = vehicle.get("data", {})
-    # Build the structured response: start with all FIXED_FIELDS, then append any extra columns
+
+    # Build structured response: canonical FIXED_FIELDS first, then ALL extra columns
     structured: Dict[str, Any] = {}
     for field in FIXED_FIELDS:
         structured[field] = raw_data.get(field, "")
@@ -230,8 +247,34 @@ async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
         if k not in structured:
             structured[k] = v
 
-    return {"vehicle_number": vehicle["vehicle_number"], "sheet_name": vehicle.get("sheet_name", "default"),
-            "data": structured}
+    return {
+        "vehicle_number": vehicle["vehicle_number"],
+        "sheet_name": vehicle.get("sheet_name", "default"),
+        "fuzzy_match": fuzzy_match,
+        "data": structured,
+    }
+
+
+@router.get("/debug/record")
+async def debug_record(sheet: Optional[str] = Query(None), vn: str = Query(...),
+                       current_user: Dict = Depends(require_admin)):
+    """Admin-only: inspect the raw stored document for a vehicle — useful for diagnosing mapping issues."""
+    uid = _owner(current_user)
+    v_num = re.sub(r'[^A-Z0-9]', '', vn.upper().strip())
+    query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
+    if sheet:
+        query["sheet_name"] = clean(sheet)
+    vehicle = await vehicles_collection.find_one(query)
+    if not vehicle:
+        # Try fuzzy
+        prefix = re.escape(v_num[:6]) if len(v_num) >= 6 else re.escape(v_num)
+        vehicle = await vehicles_collection.find_one(
+            {"user_id": uid, "vehicle_number": {"$regex": f"^{prefix}", "$options": "i"}}
+        )
+    if not vehicle:
+        raise HTTPException(status_code=404, detail=f"No raw record found for: {v_num}")
+    vehicle["_id"] = str(vehicle["_id"])
+    return {"raw_document": vehicle}
 
 
 @router.post("/vehicles")
