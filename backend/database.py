@@ -34,6 +34,7 @@ async def init_db():
         unique=True, name="user_vehicle_sheet_idx"
     )
     await vehicles_collection.create_index("vehicle_number")
+    await vehicles_collection.create_index("searchable_tokens")  # for Tier-2 token search
     await uploads_collection.create_index("timestamp")
     await uploads_collection.create_index("user_id")
     await sheets_collection.create_index([("user_id", 1), ("name", 1)], unique=True)

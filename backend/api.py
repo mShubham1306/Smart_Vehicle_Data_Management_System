@@ -216,24 +216,68 @@ async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
     uid = _owner(current_user)
     # Normalize: strip ALL non-alphanumeric chars, uppercase
     v_num = re.sub(r'[^A-Z0-9]', '', vehicle_number.upper().strip())
+    v_num_lower = v_num.lower()
 
-    # ── Step 1: Exact match across ALL sheets (global, no sheet filter) ──
+    vehicle = None
+    fuzzy_match = False
+
+    # ── Tier 1: Exact vehicle_number match ──────────────────────────
     vehicle = await vehicles_collection.find_one(
         {"user_id": uid, "vehicle_number": v_num}, {"_id": 0}
     )
 
-    fuzzy_match = False
+    # ── Tier 2: searchable_tokens array match ───────────────────────
+    if not vehicle:
+        vehicle = await vehicles_collection.find_one(
+            {"user_id": uid, "searchable_tokens": {"$in": [v_num, v_num_lower, vehicle_number.upper(), vehicle_number.lower()]}},
+            {"_id": 0}
+        )
 
-    # ── Step 2: Fuzzy fallback — regex prefix on first 6 chars ──
+    # ── Tier 3: Fuzzy prefix regex on vehicle_number ─────────────────
     if not vehicle and len(v_num) >= 4:
         prefix = re.escape(v_num[:6]) if len(v_num) >= 6 else re.escape(v_num)
-        fuzzy_query = {
-            "user_id": uid,
-            "vehicle_number": {"$regex": f"^{prefix}", "$options": "i"}
-        }
-        vehicle = await vehicles_collection.find_one(fuzzy_query, {"_id": 0})
+        vehicle = await vehicles_collection.find_one(
+            {"user_id": uid, "vehicle_number": {"$regex": f"^{prefix}", "$options": "i"}},
+            {"_id": 0}
+        )
         if vehicle:
             fuzzy_match = True
+
+    # ── Tier 4: Emergency full data-value scan (handles old bad records) ───
+    if not vehicle:
+        # Scan all records and check if plate appears anywhere in data values
+        cursor = vehicles_collection.find(
+            {"user_id": uid},
+            {"_id": 1, "vehicle_number": 1, "data": 1, "sheet_name": 1,
+             "searchable_tokens": 1, "column_map": 1}
+        ).limit(5000)
+        async for doc in cursor:
+            data_vals = doc.get("data", {})
+            for field_val in data_vals.values():
+                normalized_val = re.sub(r'[^A-Z0-9]', '', str(field_val).upper())
+                if normalized_val == v_num:
+                    # ✅ FOUND! Auto-repair this record in-place
+                    try:
+                        from services import build_searchable_tokens
+                        tokens = build_searchable_tokens(str(field_val))
+                        raw_id = doc["_id"]
+                        await vehicles_collection.update_one(
+                            {"_id": raw_id},
+                            {"$set": {
+                                "vehicle_number": v_num,
+                                "searchable_tokens": tokens,
+                            }}
+                        )
+                    except Exception as fix_err:
+                        print(f"[Search] Auto-repair failed: {fix_err}")
+                    # Re-fetch clean copy without _id
+                    vehicle = await vehicles_collection.find_one(
+                        {"user_id": uid, "vehicle_number": v_num}, {"_id": 0}
+                    )
+                    fuzzy_match = True  # Mild flag: data was repaired
+                    break
+            if vehicle:
+                break
 
     if not vehicle:
         raise HTTPException(

@@ -508,6 +508,25 @@ def _is_plate_value(val: str) -> bool:
     return bool(_PLATE_RE.match(clean))
 
 
+def build_searchable_tokens(raw_plate: str) -> List[str]:
+    """
+    Generate all searchable forms of a plate number so search always finds it
+    no matter how it was entered.
+    GJ-06-RC-1934 / GJ 06 RC 1934 / gj06rc1934 / GJ06RC1934 → all stored.
+    """
+    tokens = set()
+    raw = str(raw_plate).strip()
+    clean = re.sub(r'[^A-Za-z0-9]', '', raw).upper()   # GJ06RC1934
+    tokens.add(raw)
+    tokens.add(clean)
+    tokens.add(clean.lower())
+    tokens.add(raw.upper())
+    tokens.add(raw.lower())
+    # Also add with common separators stripped
+    tokens.add(re.sub(r'\s+', '', raw).upper())
+    return [t for t in tokens if t]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PLATE-REGEX AUTO-DETECTION FALLBACK (if no column mapped to Vehicle)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -617,7 +636,17 @@ def _process_dataframe(
 
         raw_vnum = row_dict.get(VEHICLE_FIELD, '')
         if not raw_vnum or raw_vnum.lower() in ('', 'nan', 'none', '-'):
-            continue
+            # ── EMERGENCY RECOVERY: scan ALL values in this row for a plate pattern ──
+            recovered = ''
+            for cell_key, cell_val in row_dict.items():
+                v = str(cell_val).strip()
+                if v and v.lower() not in ('nan', 'none', '-', '') and _is_plate_value(v):
+                    recovered = v
+                    logger.info(f"[Upload] Emergency recovery: found plate '{v}' in column '{cell_key}'")
+                    break
+            if not recovered:
+                continue  # Truly no plate anywhere in this row — skip it
+            raw_vnum = recovered
 
         vnum = normalize_vehicle_number(raw_vnum)
         if not vnum:
@@ -642,11 +671,15 @@ def _process_dataframe(
 
         data[VEHICLE_FIELD] = vnum
 
+        # ── Build searchable_tokens for all normalized plate forms ────────────
+        s_tokens = build_searchable_tokens(raw_vnum)
+
         records.append({
             "vehicle_number": vnum,
             "sheet_name": sheet_name,
             "data": data,
-            "column_map": mapping_report,  # stored for inspection
+            "column_map": mapping_report,
+            "searchable_tokens": s_tokens,
         })
 
     logger.info(f"[Upload] Sheet '{sheet_name}': {len(records)} valid records from {len(data_rows)} rows")
