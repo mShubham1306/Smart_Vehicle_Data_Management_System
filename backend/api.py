@@ -13,7 +13,16 @@ import traceback
 from io import BytesIO
 import re
 from bson import ObjectId
+import os
+import uuid
+import aiofiles
+from tasks import process_upload_task, process_export_task
+from database import upload_tasks_collection, export_tasks_collection
+import json
+import redis.asyncio as redis
+from fastapi.responses import FileResponse
 
+redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
 router = APIRouter()
 
 
@@ -154,56 +163,50 @@ async def upload_file(
     uid = current_user["id"]
     sheet_name = clean(sheet_name) or "default"
     try:
-        content = await file.read()
         filename = file.filename.lower()
         if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
             raise HTTPException(status_code=400, detail="Only Excel (.xlsx, .xls) and CSV files are supported.")
 
-        records, columns, vehicle_col = services.parse_and_normalize(
-            content, filename, sheet_name, user_id=uid
+        os.makedirs("uploads_temp", exist_ok=True)
+        task_id = str(uuid.uuid4())
+        filepath = os.path.join("uploads_temp", f"{task_id}_{filename}")
+        
+        async with aiofiles.open(filepath, 'wb') as out_file:
+            while content := await file.read(1024 * 1024):  # 1MB chunks
+                await out_file.write(content)
+
+        # Trigger celery task
+        process_upload_task.apply_async(
+            args=[filepath, filename, sheet_name, uid],
+            task_id=task_id
         )
-        if not records:
-            return {"message": "No valid vehicle data found.", "count": 0, "columns": columns,
-                    "vehicle_col": vehicle_col, "inserted": 0, "updated": 0, "total_processed": 0}
-
-        # ── Dynamically create each sheet referenced in the parsed records ──
-        unique_sheets = list({r["sheet_name"] for r in records})
-        for sname in unique_sheets:
-            await sheets_collection.update_one(
-                {"user_id": uid, "name": sname},
-                {"$setOnInsert": {"user_id": uid, "name": sname, "created_at": datetime.utcnow()}},
-                upsert=True
-            )
-
-        inserted_count = updated_count = 0
-        for record in records:
-            rec_sheet = record["sheet_name"]
-            record["user_id"] = uid
-            res = await vehicles_collection.update_one(
-                {"user_id": uid, "vehicle_number": record["vehicle_number"], "sheet_name": rec_sheet},
-                {"$set": record}, upsert=True)
-            if res.upserted_id:
-                inserted_count += 1
-            else:
-                updated_count += 1
-
-        # Use the first sheet name for the upload log
-        primary_sheet = unique_sheets[0] if unique_sheets else sheet_name
-        await uploads_collection.insert_one({
-            "user_id": uid, "filename": file.filename, "timestamp": datetime.utcnow(),
-            "inserted": inserted_count, "updated": updated_count,
-            "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD, "sheet_name": primary_sheet,
+        
+        await upload_tasks_collection.insert_one({
+            "task_id": task_id,
+            "status": "queued",
+            "filename": filename,
+            "user_id": uid,
+            "created_at": datetime.utcnow()
         })
-        return {"message": "File processed successfully", "inserted": inserted_count,
-                "updated": updated_count, "total_processed": len(records),
-                "columns": FIXED_FIELDS, "vehicle_col": VEHICLE_FIELD,
-                "sheet_name": primary_sheet, "sheets_created": unique_sheets}
+
+        return {
+            "message": "File is being processed in the background.",
+            "task_id": task_id
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+
+
+@router.get("/upload/status/{task_id}")
+async def get_upload_status(task_id: str, current_user: Dict = Depends(require_admin)):
+    task = await upload_tasks_collection.find_one({"task_id": task_id}, {"_id": 0})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 
 # ─────────────────────────────────────────────────────────────
@@ -243,41 +246,17 @@ async def search_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
         if vehicle:
             fuzzy_match = True
 
-    # ── Tier 4: Emergency full data-value scan (handles old bad records) ───
+    # ── Tier 4: Emergency full data-value scan (Optimized Text Lookup) ───
     if not vehicle:
-        # Scan all records and check if plate appears anywhere in data values
-        cursor = vehicles_collection.find(
-            {"user_id": uid},
-            {"_id": 1, "vehicle_number": 1, "data": 1, "sheet_name": 1,
-             "searchable_tokens": 1, "column_map": 1}
-        ).limit(5000)
-        async for doc in cursor:
-            data_vals = doc.get("data", {})
-            for field_val in data_vals.values():
-                normalized_val = re.sub(r'[^A-Z0-9]', '', str(field_val).upper())
-                if normalized_val == v_num:
-                    # ✅ FOUND! Auto-repair this record in-place
-                    try:
-                        from services import build_searchable_tokens
-                        tokens = build_searchable_tokens(str(field_val))
-                        raw_id = doc["_id"]
-                        await vehicles_collection.update_one(
-                            {"_id": raw_id},
-                            {"$set": {
-                                "vehicle_number": v_num,
-                                "searchable_tokens": tokens,
-                            }}
-                        )
-                    except Exception as fix_err:
-                        print(f"[Search] Auto-repair failed: {fix_err}")
-                    # Re-fetch clean copy without _id
-                    vehicle = await vehicles_collection.find_one(
-                        {"user_id": uid, "vehicle_number": v_num}, {"_id": 0}
-                    )
-                    fuzzy_match = True  # Mild flag: data was repaired
-                    break
+        try:
+            vehicle = await vehicles_collection.find_one(
+                {"user_id": uid, "$text": {"$search": f'"{v_num}"'}},
+                {"_id": 0}
+            )
             if vehicle:
-                break
+                fuzzy_match = True
+        except Exception as e:
+            print(f"[Search] Text lookup failed: {e}")
 
     if not vehicle:
         raise HTTPException(
@@ -389,6 +368,11 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
                               current_user: Dict = Depends(get_current_user)):
     uid = _owner(current_user)
     sheet = clean(sheet or "default")
+    cache_key = f"dashboard_stats_{uid}_{sheet}"
+    cached = await redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
 
     total_vehicles = await vehicles_collection.count_documents(base_query)
@@ -465,7 +449,7 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
     sorted_expiry_months = sorted(expiry_by_month.keys(), key=month_sort_key)[-12:]
     sorted_monthly_keys  = sorted(monthly_data.keys(),    key=month_sort_key)[-12:]
 
-    return {
+    stats_result = {
         "sheet_name": sheet,
         "total_vehicles":       total_vehicles,
         "active_insurance":     active_count,
@@ -484,6 +468,8 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         "top_companies":        [{"name": k, "count": v} for k, v in top_companies],
         "fuel_types":           [{"name": k, "count": v} for k, v in top_fuels],
     }
+    await redis_client.setex(cache_key, 300, json.dumps(stats_result))
+    return stats_result
 
 
 # ─────────────────────────────────────────────────────────────
@@ -495,14 +481,29 @@ async def export_vehicles(sheet: Optional[str] = Query("default"),
                           current_user: Dict = Depends(require_admin)):
     uid = current_user["id"]
     sheet = clean(sheet or "default")
-    records = await vehicles_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).to_list(length=10000)
-    excel_bytes = services.export_to_excel(records)
-    safe_name = sheet.replace(" ", "_").replace("/", "-")
-    return StreamingResponse(
-        BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={safe_name}_export.xlsx"}
-    )
+    task_id = str(uuid.uuid4())
+    process_export_task.apply_async(args=[sheet, uid], task_id=task_id)
+    await export_tasks_collection.insert_one({
+        "task_id": task_id,
+        "status": "queued",
+        "sheet_name": sheet,
+        "user_id": uid,
+        "created_at": datetime.utcnow()
+    })
+    return {"message": "Export task started", "task_id": task_id}
+
+@router.get("/export/download/{task_id}")
+async def download_export(task_id: str, current_user: Dict = Depends(require_admin)):
+    task = await export_tasks_collection.find_one({"task_id": task_id})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Export not ready")
+    filepath = os.path.join("exports_temp", f"{task_id}.xlsx")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File moved or deleted")
+    safe_name = task.get("sheet_name", "export").replace(" ", "_").replace("/", "-")
+    return FileResponse(filepath, filename=f"{safe_name}_export.xlsx")
 
 
 # ─────────────────────────────────────────────────────────────

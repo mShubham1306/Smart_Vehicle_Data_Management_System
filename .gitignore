@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+venv/
+env/
+.venv/
+ENV/
+
+# Environment secrets — NEVER commit these
+backend/.env
+.env
+*.env
+
+# Temp upload/export directories
+backend/uploads_temp/
+backend/exports_temp/
+
+# Node / Angular
+frontend/node_modules/
+frontend/.angular/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Logs
+*.log
+logs/

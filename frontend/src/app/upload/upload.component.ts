@@ -222,8 +222,38 @@ export class UploadComponent implements OnInit, OnDestroy {
     }
 
     this.ds.uploadFile(file, target).subscribe({
-      next: res => { this.result = res; this.uploading = false; },
+      next: res => { 
+        if (res.task_id) {
+          this.pollStatus(res.task_id);
+        } else {
+          this.result = res; this.uploading = false; 
+        }
+      },
       error: err => { this.error = err.error?.detail || 'Upload failed. Please try again.'; this.uploading = false; }
     });
+  }
+
+  pollStatus(taskId: string) {
+    const intervalId = setInterval(() => {
+      this.ds.getUploadStatus(taskId).subscribe({
+        next: (status) => {
+          if (status.status === 'completed') {
+            clearInterval(intervalId);
+            this.result = status.result;
+            this.uploading = false;
+            this.ds.loadSheets();
+          } else if (status.status === 'failed') {
+            clearInterval(intervalId);
+            this.error = status.error || 'Background task failed.';
+            this.uploading = false;
+          }
+        },
+        error: (err) => {
+          clearInterval(intervalId);
+          this.error = 'Failed to check status.';
+          this.uploading = false;
+        }
+      });
+    }, 2000);
   }
 }

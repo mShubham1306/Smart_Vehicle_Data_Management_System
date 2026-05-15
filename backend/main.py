@@ -5,15 +5,22 @@ import uvicorn
 import traceback
 from database import init_db, users_collection
 from api import router as api_router
-from auth import auth_router, get_current_user, verify_password, create_access_token
+from auth import auth_router, get_current_user, verify_password, create_access_token, require_admin
+import audit as audit_log
 from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
 from typing import Dict, Any, Optional
 from auth import decode_token, bearer_scheme
 
+from limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(title="Smart Vehicle Insurance System API")
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS FIRST before any routers
 app.add_middleware(
@@ -57,6 +64,11 @@ async def promote_admin(
     await users_collection.update_one(
         {"_id": user["_id"]},
         {"$set": {"role": "admin"}}
+    )
+    await audit_log.log_action(
+        audit_log.ROLE_CHANGE, user_id=str(user["_id"]),
+        username=user["username"],
+        detail="Self-promoted to admin via promote-admin endpoint"
     )
     # Return a new token with admin role
     token = create_access_token(

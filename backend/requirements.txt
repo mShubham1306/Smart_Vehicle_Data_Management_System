@@ -7,5 +7,13 @@ openpyxl
 python-multipart
 python-jose[cryptography]
 bcrypt
+passlib[bcrypt]
 dnspython
 rapidfuzz
+celery
+redis
+slowapi
+gunicorn
+aiofiles
+email-validator
+httpx

@@ -116,12 +116,11 @@ export class DataService {
     const form = new FormData();
     form.append('file', file);
     form.append('sheet_name', sheetName ?? this.activeSheet);
-    return this.http.post<any>(`${API}/upload`, form).pipe(
-      tap(() => {
-        this._schema.next({ columns: FIXED_FIELDS, vehicle_col: 'Vehicle' });
-        this.loadSheets();
-      })
-    );
+    return this.http.post<any>(`${API}/upload`, form);
+  }
+
+  getUploadStatus(taskId: string): Observable<any> {
+    return this.http.get<any>(`${API}/upload/status/${taskId}`);
   }
 
   searchVehicle(vn: string): Observable<any> {

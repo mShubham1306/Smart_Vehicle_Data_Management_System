@@ -5,13 +5,14 @@ import { DataService, SheetInfo } from '../data.service';
 import { AuthService } from '../auth.service';
 import { HttpClientModule } from '@angular/common/http';
 import { Subscription } from 'rxjs';
+import { ScrollingModule } from '@angular/cdk/scrolling';
 
 declare const Chart: any;
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, HttpClientModule, FormsModule],
+  imports: [CommonModule, HttpClientModule, FormsModule, ScrollingModule],
   template: `
     <div style="font-family:'Inter',sans-serif">
 
@@ -284,32 +285,30 @@ declare const Chart: any;
             <p class="text-sm text-textGray">No vehicle records in this sheet yet</p>
           </div>
           <div *ngIf="filteredVehicles.length" class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-[10px] text-textGray uppercase tracking-wider" style="border-bottom:1px solid #262626">
-                  <th class="pb-3 pr-6 text-left">Vehicle No.</th>
-                  <th class="pb-3 pr-6 text-left">Owner</th>
-                  <th class="pb-3 pr-6 text-left hidden sm:table-cell">Insurance Co.</th>
-                  <th class="pb-3 pr-6 text-left hidden sm:table-cell">Expiry</th>
-                  <th class="pb-3 text-left">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let v of filteredVehicles" style="border-bottom:1px solid rgba(255,255,255,0.03)">
-                  <td class="py-3 pr-6 font-mono font-bold text-textLight text-xs">{{ v.vehicle_number }}</td>
-                  <td class="py-3 pr-6 text-xs text-textGray">{{ v.owner }}</td>
-                  <td class="py-3 pr-6 text-xs text-textGray truncate max-w-[120px] hidden sm:table-cell">{{ v.company }}</td>
-                  <td class="py-3 pr-6 text-xs text-textGray hidden sm:table-cell">{{ v.expiry }}</td>
-                  <td class="py-3">
-                    <span class="text-[10px] px-2.5 py-1 rounded-full font-bold"
-                      [style.background]="getStatusBg(v.status)"
-                      [style.color]="getStatusColor(v.status)">
-                      {{ getStatusLabel(v.status) }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <!-- Table Headers -->
+            <div class="flex text-[10px] text-textGray uppercase tracking-wider py-3" style="border-bottom:1px solid #262626; min-width: 600px">
+              <div class="flex-1 pr-6 text-left">Vehicle No.</div>
+              <div class="flex-1 pr-6 text-left">Owner</div>
+              <div class="flex-1 pr-6 text-left hidden sm:block">Insurance Co.</div>
+              <div class="flex-1 pr-6 text-left hidden sm:block">Expiry</div>
+              <div class="w-24 text-left">Status</div>
+            </div>
+            <!-- Virtual Scroll Viewport -->
+            <cdk-virtual-scroll-viewport itemSize="49" class="w-full hide-scroll" style="height: 300px; min-width: 600px">
+              <div *cdkVirtualFor="let v of filteredVehicles" class="flex items-center py-3" style="border-bottom:1px solid rgba(255,255,255,0.03); height: 49px">
+                <div class="flex-1 pr-6 font-mono font-bold text-textLight text-xs truncate">{{ v.vehicle_number }}</div>
+                <div class="flex-1 pr-6 text-xs text-textGray truncate">{{ v.owner || '—' }}</div>
+                <div class="flex-1 pr-6 text-xs text-textGray truncate hidden sm:block">{{ v.company || '—' }}</div>
+                <div class="flex-1 pr-6 text-xs text-textGray hidden sm:block">{{ v.expiry || '—' }}</div>
+                <div class="w-24">
+                  <span class="text-[10px] px-2.5 py-1 rounded-full font-bold"
+                    [style.background]="getStatusBg(v.status)"
+                    [style.color]="getStatusColor(v.status)">
+                    {{ getStatusLabel(v.status) }}
+                  </span>
+                </div>
+              </div>
+            </cdk-virtual-scroll-viewport>
           </div>
           <div *ngIf="stats?.recent_vehicles?.length && !filteredVehicles.length" class="text-center py-8">
             <p class="text-xs text-textGray">No records match this filter</p>
