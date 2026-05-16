@@ -336,11 +336,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       this.authService.forgotPassword({ email: this.email.trim().toLowerCase() }).subscribe({
         next: (res: any) => {
           this.loading = false;
-          if (res.dev_otp) {
-            this.success = `SMTP not configured. Test OTP: ${res.dev_otp}`;
-          } else {
-            this.success = 'Reset code sent! Check your email inbox (and spam).';
-          }
+          this.success = 'Reset code sent! Check your email inbox (and spam folder).';
           this.mode = 'reset_password';
         },
         error: (err: any) => {

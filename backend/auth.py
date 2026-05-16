@@ -691,13 +691,16 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
     username_str = user.get("username", email)
     email_sent = await send_otp_email(user.get("email", email), username_str, otp, ip)
 
-    resp: Dict[str, Any] = {"message": "If an account with this email exists, an OTP has been sent."}
     if not email_sent:
-        # Dev fallback — expose OTP only if SMTP not configured
-        resp["dev_otp"] = otp
-        resp["message"] = "SMTP not configured. Dev OTP included for testing."
+        # Log the OTP for testing purposes (DO NOT expose to client)
+        print(f"[OTP_TEST_MODE] {username_str}: {otp} (expires in {OTP_EXPIRE_MINUTES} min)")
+        await audit_log.log_action(
+            audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
+            username=username_str, ip=ip, user_agent=_get_device(request),
+            detail=f"SMTP NOT CONFIGURED - Test OTP: {otp}"
+        )
 
-    return resp
+    return {"message": "If an account with this email exists, an OTP has been sent."}
 
 
 @auth_router.post("/reset-password")
