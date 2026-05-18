@@ -15,19 +15,24 @@ services:
     container_name: smart_vehicle_redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    # ===== OPTIMIZED FOR SCALING =====
+    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru --appendonly yes --appendfsync everysec
     restart: unless-stopped
 
   api:
     build: 
       context: ./backend
     container_name: smart_vehicle_api
-    command: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+    # ===== OPTIMIZED FOR SCALING =====
+    command: gunicorn main:app -w 16 -k uvicorn.workers.UvicornWorker --worker-class gevent --worker-connections 1000 -b 0.0.0.0:8000 --access-logfile - --error-logfile - --log-level info --timeout 120
     volumes:
       - ./backend:/app
     ports:
       - "8000:8000"
     environment:
-      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_URI=mongodb://mongodb:27017/vehicle_insurance?maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=45000&serverSelectionTimeoutMS=10000
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -35,16 +40,21 @@ services:
       - mongodb
       - redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   worker:
     build:
       context: ./backend
     container_name: smart_vehicle_celery
-    command: celery -A worker.celery_app worker --loglevel=info
+    command: celery -A worker.celery_app worker --concurrency=8 --loglevel=info --time-limit=600 --soft-time-limit=550
     volumes:
       - ./backend:/app
     environment:
-      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_URI=mongodb://mongodb:27017/vehicle_insurance?maxPoolSize=200&minPoolSize=20
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0

@@ -4,9 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# OPTIMIZED CONNECTION POOLING FOR SCALING
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 if "?" not in MONGO_URI:
-    MONGO_URI += "?maxPoolSize=100&minPoolSize=10"
+    # Safe pool sizes for Atlas M10 (1500 max connections shared across all workers)
+    MONGO_URI += "?maxPoolSize=50&minPoolSize=5&maxIdleTimeMS=45000&serverSelectionTimeoutMS=10000&waitQueueTimeoutMS=10000"
     
 client = AsyncIOMotorClient(MONGO_URI)
 database = client.vehicle_insurance
@@ -79,6 +81,17 @@ async def init_db():
     await audit_logs_collection.create_index([("user_id", 1), ("timestamp", -1)])
     await audit_logs_collection.create_index("timestamp")
     await audit_logs_collection.create_index("action")
+    await audit_logs_collection.create_index([("user_id", 1), ("action", 1), ("timestamp", -1)])
+    
+    # Email queue for fast status queries
+    await email_queue_collection.create_index([("status", 1), ("created_at", 1)])
+    await email_queue_collection.create_index([("user_id", 1)])
+    try:
+        await email_queue_collection.create_index(
+            "created_at", expireAfterSeconds=604800, name="email_queue_ttl_idx"  # 7 days
+        )
+    except Exception:
+        pass
 
     # Sessions — fast lookup + auto-expire after 7 days via TTL
     await sessions_collection.create_index([("user_id", 1)])

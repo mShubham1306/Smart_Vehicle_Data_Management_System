@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 import traceback
@@ -16,20 +17,41 @@ from auth import decode_token, bearer_scheme
 from limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+import redis.asyncio as redis
+import os
+import time
 
 app = FastAPI(title="Smart Vehicle Insurance System API")
+
+# Initialize Redis client for health checks
+redis_client = None
+
+async def get_redis_client():
+    global redis_client
+    if redis_client is None:
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        redis_client = await redis.from_url(redis_url, decode_responses=False)
+    return redis_client
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configure CORS FIRST before any routers
+# Configure CORS — restrict to known frontend origin in production
+_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", os.getenv("APP_URL", "http://localhost:4200")).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Enable GZip compression for faster payload delivery
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(api_router, prefix="/api", tags=["data"])
@@ -159,8 +181,54 @@ def read_root():
 
 
 @app.get("/health")
-def health_check():
-    return {"status": "ok"}
+async def health_check():
+    """Basic health check - API is running"""
+    return {
+        "status": "healthy",
+        "service": "SmartInsure API",
+        "timestamp": time.time()
+    }
+
+
+@app.get("/ready")
+async def readiness_check():
+    """Readiness check - API is ready to handle requests (DB + Cache OK)"""
+    errors = []
+    
+    # Check MongoDB
+    try:
+        pong = await users_collection.find_one({}, {"_id": 1})
+        if pong is None:
+            # DB is working even if collection is empty
+            pass
+    except Exception as e:
+        errors.append(f"MongoDB: {str(e)}")
+    
+    # Check Redis (optional — app still works without it)
+    redis_ok = False
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            redis_cli = await get_redis_client()
+            await redis_cli.ping()
+            redis_ok = True
+        except Exception as e:
+            # Redis is optional; log but don't block readiness
+            print(f"[ready] Redis unavailable (non-critical): {e}")
+    else:
+        redis_ok = None  # Not configured
+
+    if errors:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not-ready", "errors": errors}
+        )
+
+    return {
+        "status": "ready",
+        "redis": "ok" if redis_ok else ("not-configured" if redis_ok is None else "unavailable"),
+        "timestamp": time.time()
+    }
 
 
 if __name__ == "__main__":

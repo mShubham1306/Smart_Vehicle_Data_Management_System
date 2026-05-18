@@ -1,0 +1,192 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: smart_vehicle_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    restart: unless-stopped
+    command: mongod --replSet rs0
+    healthcheck:
+      test: echo "db.adminCommand('ping')" | mongosh
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: smart_vehicle_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_vehicle_api
+    # === OPTIMIZED FOR SCALING ===
+    command: gunicorn main:app -w 16 -k uvicorn.workers.UvicornWorker --worker-class gevent --worker-connections 1000 -b 0.0.0.0:8000 --access-logfile - --error-logfile - --log-level info
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://admin:admin123@mongodb:27017/vehicle_insurance?authSource=admin&maxPoolSize=500&minPoolSize=50
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - LOG_LEVEL=INFO
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === WORKER SCALING ===
+  worker-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_vehicle_celery_1
+    command: celery -A worker.celery_app worker --concurrency=8 --loglevel=info --time-limit=600 --soft-time-limit=550 -n worker1@%h
+    volumes:
+      - ./backend:/app
+    environment:
+      - MONGO_URI=mongodb://admin:admin123@mongodb:27017/vehicle_insurance?authSource=admin&maxPoolSize=200
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  worker-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_vehicle_celery_2
+    command: celery -A worker.celery_app worker --concurrency=8 --loglevel=info --time-limit=600 --soft-time-limit=550 -n worker2@%h
+    volumes:
+      - ./backend:/app
+    environment:
+      - MONGO_URI=mongodb://admin:admin123@mongodb:27017/vehicle_insurance?authSource=admin&maxPoolSize=200
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  worker-3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_vehicle_celery_3
+    command: celery -A worker.celery_app worker --concurrency=8 --loglevel=info --time-limit=600 --soft-time-limit=550 -n worker3@%h
+    volumes:
+      - ./backend:/app
+    environment:
+      - MONGO_URI=mongodb://admin:admin123@mongodb:27017/vehicle_insurance?authSource=admin&maxPoolSize=200
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  # === BEAT SCHEDULER (for scheduled tasks) ===
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_vehicle_beat
+    command: celery -A worker.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - MONGO_URI=mongodb://admin:admin123@mongodb:27017/vehicle_insurance?authSource=admin
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  # === FLOWER (Celery monitoring) ===
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_vehicle_flower
+    command: celery -A worker.celery_app flower --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # === MONITORING ===
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: smart_vehicle_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: smart_vehicle_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

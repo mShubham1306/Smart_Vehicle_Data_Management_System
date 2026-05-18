@@ -3,7 +3,7 @@ services:
     name: smart-vehicle-backend
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     envVars:
       - key: MONGO_URI
         sync: false
@@ -11,5 +11,33 @@ services:
         generateValue: true
       - key: JWT_ALGORITHM
         value: HS256
-      - key: JWT_EXPIRE_DAYS
+      # IMPORTANT: Set this to your Vercel frontend URL (e.g. https://your-app.vercel.app)
+      - key: APP_URL
+        sync: false
+      # Comma-separated list of allowed frontend origins
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: APP_NAME
+        value: SmartInsure
+      - key: FROM_NAME
+        value: SmartInsure Security
+      # Session expiry settings
+      - key: ADMIN_TOKEN_EXPIRE_HOURS
+        value: 48
+      - key: WORKER_TOKEN_EXPIRE_HOURS
+        value: 3
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: 7
+      # SMTP — leave blank to use dev/test mode (OTPs in API response)
+      - key: SMTP_SERVER
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      # Redis — optional, leave blank if not using Redis on Render
+      - key: REDIS_URL
+        sync: false
+
