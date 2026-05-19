@@ -53,8 +53,11 @@ app.add_middleware(
 # Enable GZip compression for faster payload delivery
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+from pdf_router import router as pdf_router
+
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(api_router, prefix="/api", tags=["data"])
+app.include_router(pdf_router, prefix="/api/pdf", tags=["pdf"])
 
 
 @app.post("/api/auth/promote-admin")

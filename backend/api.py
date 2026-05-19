@@ -22,7 +22,24 @@ import json
 import redis.asyncio as redis
 from fastapi.responses import FileResponse
 
-redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+# ── Lazy Redis client — prevents startup crash when REDIS_URL is not configured ──
+_redis_client: Optional[redis.Redis] = None
+
+async def _get_redis() -> Optional[redis.Redis]:
+    """Return a live Redis client, or None if Redis is not configured / unreachable."""
+    global _redis_client
+    _redis_url = os.getenv("REDIS_URL", "")
+    if not _redis_url:
+        return None
+    if _redis_client is None:
+        try:
+            _redis_client = redis.from_url(_redis_url, decode_responses=False)
+            await _redis_client.ping()
+        except Exception as e:
+            print(f"[redis] Connection failed (non-critical): {e}")
+            _redis_client = None
+    return _redis_client
+
 router = APIRouter()
 
 
@@ -369,9 +386,14 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
     uid = _owner(current_user)
     sheet = clean(sheet or "default")
     cache_key = f"dashboard_stats_{uid}_{sheet}"
-    cached = await redis_client.get(cache_key)
-    if cached:
-        return json.loads(cached)
+    _rc = await _get_redis()
+    if _rc:
+        try:
+            cached = await _rc.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            print(f"[cache] Redis get failed (non-critical): {e}")
 
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
 
@@ -468,7 +490,11 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         "top_companies":        [{"name": k, "count": v} for k, v in top_companies],
         "fuel_types":           [{"name": k, "count": v} for k, v in top_fuels],
     }
-    await redis_client.setex(cache_key, 300, json.dumps(stats_result))
+    if _rc:
+        try:
+            await _rc.setex(cache_key, 300, json.dumps(stats_result))
+        except Exception as e:
+            print(f"[cache] Redis set failed (non-critical): {e}")
     return stats_result
 
 

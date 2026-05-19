@@ -3,7 +3,9 @@ services:
     name: smart-vehicle-backend
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    # Safe Render start command: 2 workers (fits starter RAM), UvicornWorker for async FastAPI
+    startCommand: gunicorn backend.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --keep-alive 5
+    rootDir: .
     envVars:
       - key: MONGO_URI
         sync: false
@@ -14,7 +16,7 @@ services:
       # IMPORTANT: Set this to your Vercel frontend URL (e.g. https://your-app.vercel.app)
       - key: APP_URL
         sync: false
-      # Comma-separated list of allowed frontend origins
+      # Comma-separated list of allowed frontend origins (your Vercel URL)
       - key: ALLOWED_ORIGINS
         sync: false
       - key: APP_NAME
@@ -40,4 +42,14 @@ services:
       # Redis — optional, leave blank if not using Redis on Render
       - key: REDIS_URL
         sync: false
-
+      # ── AWS S3 for PDF Storage ─────────────────────────────────
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_S3_BUCKET_NAME
+        sync: false
+      - key: AWS_REGION
+        value: ap-south-1
+      - key: PDF_SIGNED_URL_EXPIRY
+        value: 3600

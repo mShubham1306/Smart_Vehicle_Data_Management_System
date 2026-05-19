@@ -163,6 +163,25 @@ export class DataService {
     );
   }
 
+  // ── PDF GENERATION AND TRACKING ──
+  
+  uploadPdf(blob: Blob, metadata: any): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', blob, 'insurance.pdf');
+    formData.append('vehicle_number', metadata.vehicle_number);
+    formData.append('sheet_name', metadata.sheet_name ?? this.activeSheet);
+    formData.append('generated_by_name', metadata.generated_by_name ?? '');
+    formData.append('agent_name', metadata.agent_name ?? '');
+    formData.append('field_agent_name', metadata.field_agent_name ?? '');
+    formData.append('admin_name', metadata.admin_name ?? '');
+    
+    return this.http.post<any>(`${API}/pdf/upload`, formData);
+  }
+  
+  getPdfHistory(): Observable<any> {
+    return this.http.get<any>(`${API}/pdf/history`);
+  }
+
   /** Promote current user account to admin (requires password confirmation) */
   promoteToAdmin(password: string): Observable<any> {
     return this.http.post<any>(`${environment.apiUrl}/auth/promote-admin`, { password });

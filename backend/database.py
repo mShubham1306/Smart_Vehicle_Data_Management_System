@@ -27,6 +27,7 @@ audit_logs_collection        = database.get_collection("audit_logs")
 sessions_collection          = database.get_collection("sessions")
 revoked_tokens_collection    = database.get_collection("revoked_tokens")
 email_queue_collection       = database.get_collection("email_queue")
+pdf_documents_collection     = database.get_collection("pdf_documents")
 
 
 async def init_db():
@@ -63,7 +64,7 @@ async def init_db():
     except Exception:
         pass  # Already exists
 
-    # ── Uploads / Sheets / Users Indexes ──────────────────────────────────── 
+    # ── Uploads / Sheets / Users / PDF Indexes ──────────────────────────────
     await uploads_collection.create_index("timestamp")
     await uploads_collection.create_index("user_id")
     await sheets_collection.create_index([("user_id", 1), ("name", 1)], unique=True)
@@ -75,6 +76,13 @@ async def init_db():
         [("normalized_header", 1), ("user_id", 1)], unique=True,
         name="learned_mapping_idx"
     )
+    
+    # PDF tracking indexes
+    await pdf_documents_collection.create_index("quote_id", unique=True)
+    await pdf_documents_collection.create_index("user_id")
+    await pdf_documents_collection.create_index("admin_id")
+    await pdf_documents_collection.create_index("vehicle_number")
+    await pdf_documents_collection.create_index([("generated_at", -1)])
 
     # ── Security Collections Indexes ───────────────────────────────────────── 
     # Audit logs — query by user and time

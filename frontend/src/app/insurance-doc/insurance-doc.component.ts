@@ -1,12 +1,13 @@
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DatePipe } from '@angular/common';
 
 @Component({
   selector: 'app-insurance-doc',
   standalone: true,
   imports: [CommonModule],
+  providers: [DatePipe],
   styles: [`
-    :host { display:block; font-family: Arial, Helvetica, sans-serif; }
+    :host { display:block; font-family: 'Inter', Arial, Helvetica, sans-serif; }
     * { box-sizing:border-box; margin:0; padding:0; }
 
     /* ══ DOCUMENT WRAPPER ══ */
@@ -16,9 +17,10 @@ import { CommonModule } from '@angular/common';
       width:100%;
       max-width:860px;
       margin:0 auto;
-      border:2px solid #888;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size:13px;
+      border:1px solid #ccc;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      font-size:12px;
+      line-height: 1.4;
     }
 
     /* ══ HEADER ══ */
@@ -26,255 +28,216 @@ import { CommonModule } from '@angular/common';
       display:flex;
       align-items:center;
       justify-content:space-between;
-      padding:14px 24px 12px 24px;
-      border-bottom:2.5px solid #222;
+      padding:16px 30px;
       background:#fff;
-      gap:12px;
+      border-bottom: 4px solid #EE3124;
     }
 
-    /* ── Logo block ── */
-    .logo-block { display:flex; flex-direction:column; gap:0; flex-shrink:0; }
-    .logo-svg-wrap { display:block; width:280px; height:auto; }
+    .logo-block img { max-height: 50px; object-fit: contain; }
+    
+    .hdr-right { text-align:right; }
+    .hdr-title { font-size:18px; font-weight:900; color:#003087; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+    .hdr-subtitle { font-size:11px; font-weight:600; color:#555; }
 
-    /* ── Right side: bike + label ── */
-    .hdr-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
-    .bike-img { width:185px; height:115px; object-fit:contain; }
-    .tw-label {
-      font-size:14px; font-weight:900; color:#1565c0;
-      letter-spacing:0.8px; text-transform:uppercase;
-      font-family: Arial Black, Arial, sans-serif;
+    /* ══ META BAR ══ */
+    .meta-bar {
+      display:flex; justify-content:space-between; padding:8px 30px;
+      background:#f8f9fa; border-bottom:1px solid #e0e0e0;
+      font-size:10px; font-weight:600; color:#444;
     }
+    .meta-item span { color:#111; font-weight:700; }
 
-    /* ══ TITLE BAR ══ */
-    .title-bar {
-      background:#fff;
-      border-bottom:1px solid #999;
-      padding:7px 20px;
-      text-align:center;
-    }
-    .title-bar p {
-      font-size:12px; font-weight:900;
-      color:#d4500e; letter-spacing:0.5px; text-transform:uppercase;
-      font-family: Arial Black, Arial, sans-serif;
-    }
-
-    /* ══ TWO-COLUMN DETAIL SECTION ══ */
-    .two-col { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid #999; }
-    .col:first-child { border-right:1px solid #999; }
-    .col-hd {
-      background:#cfe2f3;
-      text-align:center; padding:6px 10px;
-      font-size:11px; font-weight:900; letter-spacing:2px;
-      text-transform:uppercase; color:#111;
-      border-bottom:1px solid #999;
-      font-family: Arial Black, Arial, sans-serif;
-    }
-    .dr { display:grid; grid-template-columns:38% 62%; padding:4px 10px; min-height:24px; align-items:start; }
-    .dr:not(:last-child) { border-bottom:1px solid #e8e8e8; }
-    .dl { font-size:10px; font-weight:700; color:#111; text-transform:uppercase; letter-spacing:0.2px; padding-top:1px; }
-    .dv { font-size:11px; font-weight:600; color:#111; word-break:break-word; padding-top:1px; }
-    .dv.bold { font-weight:900; font-size:12px; }
-    .dv.addr { font-size:10px; line-height:1.5; }
-
-    /* ══ PREMIUM SECTION ══ */
-    .prem { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid #999; }
-    .pl { border-right:1px solid #999; }
-    .pr { display:flex; flex-direction:column; }
+    /* ══ SECTIONS ══ */
+    .section { margin: 15px 30px; border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden; }
     .sec-hd {
-      background:#cfe2f3; text-align:center; padding:6px 10px;
-      font-size:11px; font-weight:900; letter-spacing:2px;
-      text-transform:uppercase; color:#111;
-      border-bottom:1px solid #999;
-      font-family: Arial Black, Arial, sans-serif;
+      background:#003087; color:#fff; padding:6px 12px;
+      font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
     }
-    .prow { display:grid; grid-template-columns:62% 38%; padding:5px 10px; border-bottom:1px solid #e8e8e8; }
-    .prow:last-child { border-bottom:none; }
-    .pl-l { font-size:10px; font-weight:700; color:#111; text-transform:uppercase; }
-    .pl-v { font-size:11px; font-weight:600; color:#111; }
+    
+    .sec-content { padding: 12px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap: 12px 24px; }
+    
+    .d-row { display:flex; flex-direction:column; margin-bottom:8px; }
+    .d-lbl { font-size:9px; font-weight:700; color:#666; text-transform:uppercase; }
+    .d-val { font-size:12px; font-weight:700; color:#111; word-break:break-word; }
+    .d-val.highlight { color:#003087; }
+    
+    /* ══ PREMIUM TABLE ══ */
+    .prem-table { width:100%; border-collapse:collapse; }
+    .prem-table th { background:#f5f5f5; text-align:left; padding:8px; font-size:10px; font-weight:700; color:#444; text-transform:uppercase; border-bottom:1px solid #ddd; }
+    .prem-table td { padding:8px; font-size:11px; font-weight:600; border-bottom:1px solid #eee; }
+    .prem-table tr:last-child td { border-bottom:none; }
+    .val-col { text-align:right; }
+    
+    .tot-row td { background:#f8f9fa; font-weight:800; font-size:12px; border-top:1px solid #ccc; }
+    .final-row td { background:#EE3124; color:#fff; font-size:14px; font-weight:900; }
 
-    /* Total Premium header cell */
-    .tot-head { display:grid; grid-template-columns:auto 1fr; align-items:stretch; border-bottom:1px solid #999; }
-    .tot-lbl {
-      padding:6px 12px; font-size:12px; font-weight:800; color:#111;
-      display:flex; align-items:center; background:#cfe2f3;
-      font-family: Arial Black, Arial, sans-serif;
+    /* ══ FOOTER ══ */
+    .footer {
+      background:#f8f9fa; padding:15px 30px; text-align:center;
+      font-size:9px; color:#555; border-top:1px solid #ddd; margin-top:20px;
     }
-    .tot-amt {
-      background:#e07020; color:#fff; padding:6px 16px;
-      font-size:15px; font-weight:900; display:flex; align-items:center;
-      justify-content:flex-end; white-space:nowrap;
-      font-family: Arial Black, Arial, sans-serif;
-    }
-    .idv-row { display:grid; grid-template-columns:62% 38%; padding:5px 10px; border-bottom:1px solid #e8e8e8; }
-    .idv-row:last-child { border-bottom:none; }
-    .idv-l { font-size:10px; font-weight:700; color:#111; text-transform:uppercase; }
-    .idv-v { font-size:11px; font-weight:700; color:#111; text-align:right; }
-
-    /* ══ TAGLINE ══ */
-    .tagline { background:#cfe2f3; text-align:center; padding:7px 16px; border-bottom:1px solid #999; }
-    .tagline p { font-size:12px; font-weight:700; color:#00237a; font-style:italic; }
-
-    /* ══ NET / GST ══ */
-    .ngrow { display:flex; justify-content:space-between; align-items:center; padding:5px 20px; border-bottom:1px solid #e8e8e8; background:#fff; }
-    .ng-l { font-size:10px; font-weight:600; color:#444; text-transform:uppercase; letter-spacing:0.3px; }
-    .ng-v { font-size:11px; font-weight:600; color:#111; }
-
-    /* ══ TOTAL PAYABLE ══ */
-    .total-row { display:flex; justify-content:space-between; align-items:center; padding:8px 20px; background:#ffd700; border-bottom:1px solid #999; }
-    .tr-l { font-size:13px; font-weight:900; color:#111; text-transform:uppercase; letter-spacing:0.5px; font-family:Arial Black,Arial,sans-serif; }
-    .tr-v { font-size:15px; font-weight:900; color:#111; font-family:Arial Black,Arial,sans-serif; }
-
-    /* ══ WARNING ══ */
-    .warn { background:#e07020; padding:8px 20px; display:flex; align-items:center; gap:8px; }
-    .warn-icon { font-size:16px; flex-shrink:0; }
-    .warn p { font-size:11px; font-weight:700; color:#fff; }
-
-    @media (max-width:600px) {
-      .two-col { grid-template-columns:1fr; }
-      .col:first-child { border-right:none; border-bottom:1px solid #999; }
-      .prem { grid-template-columns:1fr; }
-      .pl { border-right:none; border-bottom:1px solid #999; }
-      .hdr { flex-direction:column; gap:10px; align-items:flex-start; }
-      .hdr-right { align-items:flex-start; }
-      .bike-img { width:130px; height:80px; }
-      .logo-i { font-size:42px; }
-      .logo-icici, .logo-lombard { font-size:28px; }
+    .footer strong { color:#111; }
+    
+    /* ══ PRINT STYLES ══ */
+    @media print {
+      .doc { box-shadow:none; border:none; margin:0; max-width:100%; width:100%; }
+      .section { page-break-inside: avoid; }
     }
   `],
   template: `
     <div class="doc" *ngIf="data" id="ins-doc-main">
 
-      <!-- ════ HEADER ════ -->
+      <!-- 1. HEADER -->
       <div class="hdr">
-
-        <!-- LEFT: ICICI Lombard Logo as inline SVG - pixel-perfect match -->
         <div class="logo-block">
-          <img class="logo-svg-wrap" src="/IMG-20260422-WA0003.jpg" alt="ICICI Lombard" style="object-fit: contain;">
+          <img src="/IMG-20260422-WA0003.jpg" alt="ICICI Lombard" (error)="onImgErr($event, 'https://upload.wikimedia.org/wikipedia/commons/8/87/ICICI_Lombard_Logo.svg')">
         </div>
-
-        <!-- RIGHT: Bike image + label -->
         <div class="hdr-right">
-          <img class="bike-img"
-            src="/IMG-20260422-WA0006.jpg"
-            alt="Two Wheeler"
-            (error)="onImgErr($event, 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Hero_Splendor_Plus_BSVI.jpg/320px-Hero_Splendor_Plus_BSVI.jpg')">
-          <span class="tw-label">Two Wheeler Insurance</span>
+          <div class="hdr-title">Two Wheeler Insurance</div>
+          <div class="hdr-subtitle">Stand Alone Own Damage Renewal</div>
         </div>
       </div>
 
-      <!-- ════ TITLE BAR ════ -->
-      <div class="title-bar">
-        <p>Stand Alone Own Damage Two Wheeler Insurance Renewal Proposal</p>
+      <!-- 2. META BAR -->
+      <div class="meta-bar">
+        <div class="meta-item">Quote ID: <span>{{ quoteId || '—' }}</span></div>
+        <div class="meta-item">Generated: <span>{{ (generatedAt | date:'medium') || '—' }}</span></div>
       </div>
 
-      <!-- ════ VEHICLE + CUSTOMER ════ -->
-      <div class="two-col">
-
-        <!-- Vehicle Detail -->
-        <div class="col">
-          <div class="col-hd">Vehicle Detail</div>
-          <div class="dr">
-            <span class="dl">Make</span>
-            <span class="dv">{{ f('vehicleManufacturerName','vehicleMake','VEHICLE MAKE','make') || '—' }}</span>
-          </div>
-          <div class="dr">
-            <span class="dl">Model</span>
-            <span class="dv">{{ f('vehicleModel','model','VEHICLE MODEL VARIANT','VEHICLE MODEL') || '—' }}</span>
-          </div>
-          <div class="dr">
-            <span class="dl">Vehicle Number</span>
-            <span class="dv bold" style="letter-spacing:1px">{{ vehicleNumber || f('Vehicle','vehicle','VEHICLE NO') || '—' }}</span>
-          </div>
-          <div class="dr">
-            <span class="dl">Due Date</span>
-            <span class="dv">{{ f('expiredInsuranceUpto','DUE DATE','due date','EXPIRY DATE','insurance expiry') || '—' }}</span>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0;">
+        <!-- 3. CUSTOMER DETAILS -->
+        <div class="section" style="margin-right:15px">
+          <div class="sec-hd">Customer Details</div>
+          <div class="sec-content grid-2">
+            <div class="d-row">
+              <span class="d-lbl">Insured Name</span>
+              <span class="d-val">{{ f('ownerName','OWNER NAME','customer name','NAME') || '—' }}</span>
+            </div>
+            <div class="d-row">
+              <span class="d-lbl">Mobile No</span>
+              <span class="d-val">{{ f('ownerMobileNo','MOBILE','mobile','OWNER MOBILE NO','phone') || '—' }}</span>
+            </div>
+            <div class="d-row" style="grid-column: 1 / -1;">
+              <span class="d-lbl">Address</span>
+              <span class="d-val">{{ f('ownerAddress','OWNER ADDRESS','address','ADDRESS') || '—' }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- Customer Detail -->
-        <div class="col">
-          <div class="col-hd">Customer Detail</div>
-          <div class="dr">
-            <span class="dl">Name</span>
-            <span class="dv bold">{{ f('ownerName','OWNER NAME','customer name','NAME') || '—' }}</span>
-          </div>
-          <div class="dr">
-            <span class="dl">Mobile No</span>
-            <span class="dv">{{ f('ownerMobileNo','MOBILE','mobile','OWNER MOBILE NO','phone') || '—' }}</span>
-          </div>
-          <div class="dr" style="align-items:start">
-            <span class="dl" style="padding-top:2px">Address</span>
-            <span class="dv addr">{{ f('ownerAddress','OWNER ADDRESS','address','ADDRESS') || '—' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ════ PREMIUM SECTION ════ -->
-      <div class="prem">
-
-        <!-- Left: Premium Schedule -->
-        <div class="pl">
-          <div class="sec-hd">Premium Schedule</div>
-          <div class="prow">
-            <span class="pl-l">Basic OD Premium</span>
-            <span class="pl-v">{{ f('basicODPremium','BASIC PREMIUM','basicOD','basic_od') || calcBasicOD() }}</span>
-          </div>
-          <div class="prow">
-            <span class="pl-l">No Claim Bonus</span>
-            <span class="pl-v">{{ f('ncb','NCB','noClaimBonus','no claim bonus') || calcNCB() }}</span>
-          </div>
-          <div class="prow">
-            <span class="pl-l">Zero Dep Premium</span>
-            <span class="pl-v">{{ f('zeroDepPremium','ZERO DEP','zeroDep','zero_dep') || calcZeroDep() }}</span>
-          </div>
-          <div class="prow">
-            <span class="pl-l">With Add On Premium</span>
-            <span class="pl-v">{{ f('addOnPremium','withAddOnPremium','addOn','ADD ON') || calcAddOn() }}</span>
-          </div>
-        </div>
-
-        <!-- Right: Total Premium + IDV + Tenure -->
-        <div class="pr">
-          <div class="tot-head">
-            <span class="tot-lbl">Total Premium</span>
-            <span class="tot-amt">&#8377; {{ fmtAmt(total()) }}</span>
-          </div>
-          <div class="idv-row">
-            <span class="idv-l">Insure Declared Value (IDV)</span>
-            <span class="idv-v">{{ f('idv','IDV','insuredDeclaredValue','INSURED DECLARED VALUE') || fmtAmt(total()) }}</span>
-          </div>
-          <div class="idv-row">
-            <span class="idv-l">Tenure</span>
-            <span class="idv-v">{{ f('tenure','TENURE') || '1 Yr' }}</span>
+        <!-- 4. VEHICLE DETAILS -->
+        <div class="section" style="margin-left:0">
+          <div class="sec-hd">Vehicle Details</div>
+          <div class="sec-content grid-2">
+            <div class="d-row">
+              <span class="d-lbl">Vehicle Number</span>
+              <span class="d-val highlight">{{ vehicleNumber || f('Vehicle','vehicle','VEHICLE NO') || '—' }}</span>
+            </div>
+            <div class="d-row">
+              <span class="d-lbl">Make / Model</span>
+              <span class="d-val">{{ f('vehicleManufacturerName','vehicleMake','make') }} / {{ f('vehicleModel','model','VEHICLE MODEL') || '—' }}</span>
+            </div>
+            <div class="d-row">
+              <span class="d-lbl">Engine No</span>
+              <span class="d-val">{{ f('engineNum','engine number','engine no') || '—' }}</span>
+            </div>
+            <div class="d-row">
+              <span class="d-lbl">Chassis No</span>
+              <span class="d-val">{{ f('chassisNum','chassis number','chassis no') || '—' }}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- ════ TAGLINE ════ -->
-      <div class="tagline">
-        <p>Your Peace of Mind : Zero Depreciation, Unlimited Claims!</p>
+      <!-- 5. QUOTE DETAILS -->
+      <div class="section">
+        <div class="sec-hd">Quote Details</div>
+        <div class="sec-content grid-2">
+          <div class="d-row">
+            <span class="d-lbl">Insured Declared Value (IDV)</span>
+            <span class="d-val highlight">&#8377; {{ f('idv','IDV','insuredDeclaredValue') || fmtAmt(total()) }}</span>
+          </div>
+          <div class="d-row">
+            <span class="d-lbl">Expiry Date</span>
+            <span class="d-val" style="color:#EE3124">{{ f('expiredInsuranceUpto','DUE DATE','due date','EXPIRY DATE') || '—' }}</span>
+          </div>
+          <div class="d-row">
+            <span class="d-lbl">Previous Policy No</span>
+            <span class="d-val">{{ f('vehicleInsurancePolicyNumber','policy number','policy no') || '—' }}</span>
+          </div>
+          <div class="d-row">
+            <span class="d-lbl">Tenure</span>
+            <span class="d-val">{{ f('tenure','TENURE') || '1 Year' }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- ════ NET / GST ════ -->
-      <div class="ngrow">
-        <span class="ng-l">Net Premium</span>
-        <span class="ng-v">Rs. {{ calcNet() }}</span>
-      </div>
-      <div class="ngrow">
-        <span class="ng-l">GST 18%</span>
-        <span class="ng-v">Rs. {{ calcGST() }}</span>
+      <!-- 6 & 7. PREMIUM BREAKDOWN & ADD-ONS -->
+      <div class="section">
+        <div class="sec-hd">Premium Calculation</div>
+        <table class="prem-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="val-col">Premium (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Basic Own Damage Premium</td>
+              <td class="val-col">{{ f('basicODPremium','BASIC PREMIUM','basicOD') || calcBasicOD() }}</td>
+            </tr>
+            <tr>
+              <td>Zero Depreciation Cover</td>
+              <td class="val-col">{{ f('zeroDepPremium','ZERO DEP','zeroDep') || calcZeroDep() }}</td>
+            </tr>
+            <tr>
+              <td>Add-on Cover Premium</td>
+              <td class="val-col">{{ f('addOnPremium','withAddOnPremium','addOn') || calcAddOn() }}</td>
+            </tr>
+            <tr>
+              <td>Less: No Claim Bonus (NCB)</td>
+              <td class="val-col" style="color:green">- {{ f('ncb','NCB','noClaimBonus') || calcNCB() }}</td>
+            </tr>
+            <tr class="tot-row">
+              <td>Net Premium</td>
+              <td class="val-col">{{ calcNet() }}</td>
+            </tr>
+            <tr>
+              <td>Add: GST (18%)</td>
+              <td class="val-col">{{ calcGST() }}</td>
+            </tr>
+            <tr class="final-row">
+              <td>Total Premium Payable</td>
+              <td class="val-col">&#8377; {{ fmtAmt(total()) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <!-- ════ TOTAL PAYABLE ════ -->
-      <div class="total-row">
-        <span class="tr-l">Total Premium Payable</span>
-        <span class="tr-v">Rs. {{ fmtAmt(total()) }}</span>
+      <!-- 9. AGENT DETAILS -->
+      <div class="section" *ngIf="agentName || generatedByName">
+        <div class="sec-hd" style="background:#444;">Partner Details</div>
+        <div class="sec-content" style="display:flex; justify-content:space-around; text-align:center;">
+          <div class="d-row" *ngIf="agentName">
+            <span class="d-lbl">Agent</span>
+            <span class="d-val">{{ agentName }}</span>
+          </div>
+          <div class="d-row" *ngIf="fieldAgentName">
+            <span class="d-lbl">Field Agent</span>
+            <span class="d-val">{{ fieldAgentName }}</span>
+          </div>
+          <div class="d-row" *ngIf="generatedByName">
+            <span class="d-lbl">Generated By</span>
+            <span class="d-val">{{ generatedByName }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- ════ WARNING ════ -->
-      <div class="warn">
-        <span class="warn-icon">&#9651;</span>
-        <p>If you have taken any claim in the last policy year, please inform us immediately.</p>
+      <!-- 10. FOOTER -->
+      <div class="footer">
+        <p>This is a system generated quotation and does not require physical signature.</p>
+        <p style="margin-top:4px"><strong>SmartInsure</strong> - Empowering Insurance Partners. For any discrepancies, please contact support.</p>
       </div>
 
     </div>
@@ -283,9 +246,18 @@ import { CommonModule } from '@angular/common';
 export class InsuranceDocComponent implements OnChanges {
   @Input() data: any = null;
   @Input() vehicleNumber: string = '';
+  
+  // New Inputs for tracking
+  @Input() quoteId: string = '';
+  @Input() systemId: string = '';
+  @Input() generatedByName: string = '';
+  @Input() agentName: string = '';
+  @Input() fieldAgentName: string = '';
+  @Input() adminName: string = '';
+  @Input() userRole: string = '';
+  @Input() generatedAt: string = '';
 
   ngOnChanges(_c: SimpleChanges) {
-    // Pre-build a normalized key map once per data change for fast lookups
     this._normMap = {};
     if (this.data) {
       for (const k of Object.keys(this.data)) {
@@ -304,25 +276,14 @@ export class InsuranceDocComponent implements OnChanges {
     return this._junk.has(s.toLowerCase()) ? '' : s;
   }
 
-  /**
-   * 3-tier safe field getter:
-   * 1. Exact key match (fastest)
-   * 2. Normalized key contains any of the search words (handles OWNER_NAME, ownerName, Owner Name, etc.)
-   * 3. Returns '' if nothing found
-   */
   f(...keys: string[]): string {
     if (!this.data) return '';
-
-    // Tier 1: exact key match
     for (const key of keys) {
       const v = this._val(this.data[key]);
       if (v) return v;
     }
-
-    // Tier 2: normalized substring scan of all stored keys
     for (const key of keys) {
       const searchNorm = key.toLowerCase().replace(/[\s_\-\.]+/g, '');
-      // Try: stored key normalized contains the search word, OR vice versa
       for (const [norm, realKey] of Object.entries(this._normMap)) {
         if (norm.includes(searchNorm) || searchNorm.includes(norm)) {
           const v = this._val(this.data[realKey]);
@@ -330,7 +291,6 @@ export class InsuranceDocComponent implements OnChanges {
         }
       }
     }
-
     return '';
   }
 
@@ -346,7 +306,6 @@ export class InsuranceDocComponent implements OnChanges {
   }
 
   total(): string {
-    // Try all known fields for total/final premium
     const raw = this.f('totalPremium', 'saleAmount', 'total_premium', 'premium', 'FINAL PREMIUM', 'final premium');
     const n = parseFloat(String(raw || '0').replace(/[^0-9.]/g, ''));
     return isNaN(n) ? '0' : String(n);
@@ -374,32 +333,28 @@ export class InsuranceDocComponent implements OnChanges {
   }
 
   calcBasicOD(): string {
-    // Use actual field if available, else 65% of net premium
-    const ff = this.f('basicODPremium', 'BASIC PREMIUM', 'basic premium', 'basic od', 'basicOD');
+    const ff = this.f('basicODPremium', 'BASIC PREMIUM', 'basic od', 'basicOD');
     if (ff) return this.fmtAmt(ff);
     const n = this.netNum();
     return n ? Math.round(n * 0.65).toLocaleString('en-IN') : '—';
   }
 
   calcNCB(): string {
-    // Use actual field if available, else 10% of net premium
-    const ff = this.f('ncb', 'NCB', 'noClaimBonus', 'no claim bonus', 'bonus');
+    const ff = this.f('ncb', 'NCB', 'noClaimBonus', 'bonus');
     if (ff) return this.fmtAmt(ff);
     const n = this.netNum();
     return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—';
   }
 
   calcZeroDep(): string {
-    // Use actual field if available, else 35% of net premium
-    const ff = this.f('zeroDepPremium', 'ZERO DEP', 'zero dep', 'zeroDep', 'zeroDepPremium');
+    const ff = this.f('zeroDepPremium', 'ZERO DEP', 'zeroDep');
     if (ff) return this.fmtAmt(ff);
     const n = this.netNum();
     return n ? Math.round(n * 0.35).toLocaleString('en-IN') : '—';
   }
 
   calcAddOn(): string {
-    // Use actual field if available, else 10% of net premium
-    const ff = this.f('addOnPremium', 'withAddOnPremium', 'addOn', 'ADD ON', 'add on');
+    const ff = this.f('addOnPremium', 'withAddOnPremium', 'addOn');
     if (ff) return this.fmtAmt(ff);
     const n = this.netNum();
     return n ? Math.round(n * 0.10).toLocaleString('en-IN') : '—';

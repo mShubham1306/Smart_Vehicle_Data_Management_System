@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 motor
 python-dotenv
 pandas
@@ -14,6 +14,9 @@ celery
 redis
 slowapi
 gunicorn
+gevent
 aiofiles
 email-validator
 httpx
+boto3
+botocore
