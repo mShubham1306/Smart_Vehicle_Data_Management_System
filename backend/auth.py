@@ -726,52 +726,58 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
 @auth_router.post("/forgot-password")
 @limiter.limit("3/minute")
 async def forgot_password(request: Request, payload: Dict[str, Any]):
-    email = str(payload.get("email", "")).strip().lower()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    try:
+        email = str(payload.get("email", "")).strip().lower()
+        if not email or "@" not in email:
+            raise HTTPException(status_code=400, detail="A valid email address is required.")
 
-    user = await users_collection.find_one({"$or": [{"email": email}, {"username": email}]})
+        user = await users_collection.find_one({"$or": [{"email": email}, {"username": email}]})
 
-    if not user:
+        if not user:
+            return {"message": "If an account with this email exists, a reset code has been sent."}
+
+        if not is_smtp_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="Email service is not available. Please contact support.",
+            )
+
+        ip  = _get_ip(request)
+        otp = str(random.randint(100000, 999999))
+        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+        expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        to_addr = user.get("email") or email
+
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "reset_otp_h":        otp_hash,
+                "reset_otp_exp":      expire_time,
+                "reset_otp_attempts": 0,
+            }}
+        )
+
+        username_str = user.get("username", email)
+        email_sent = await send_otp_email(to_addr, username_str, otp, ip)
+
+        await audit_log.log_action(
+            audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
+            username=username_str, ip=ip, user_agent=_get_device(request),
+            detail="Reset OTP emailed" if email_sent else "Reset OTP email failed",
+        )
+
+        if not email_sent:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not send email. Please try again in a few minutes.",
+            )
+
         return {"message": "If an account with this email exists, a reset code has been sent."}
-
-    if not is_smtp_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="Email service is not available. Please contact support.",
-        )
-
-    ip  = _get_ip(request)
-    otp = str(random.randint(100000, 999999))
-    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
-    expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
-    to_addr = user.get("email") or email
-
-    await users_collection.update_one(
-        {"_id": user["_id"]},
-        {"$set": {
-            "reset_otp_h":        otp_hash,
-            "reset_otp_exp":      expire_time,
-            "reset_otp_attempts": 0,
-        }}
-    )
-
-    username_str = user.get("username", email)
-    email_sent = await send_otp_email(to_addr, username_str, otp, ip)
-
-    await audit_log.log_action(
-        audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
-        username=username_str, ip=ip, user_agent=_get_device(request),
-        detail="Reset OTP emailed" if email_sent else "Reset OTP email failed",
-    )
-
-    if not email_sent:
-        raise HTTPException(
-            status_code=503,
-            detail="Could not send email. Please try again in a few minutes.",
-        )
-
-    return {"message": "If an account with this email exists, a reset code has been sent."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[forgot-password] Error: {exc}")
+        raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
 
 @auth_router.post("/reset-password")

@@ -171,6 +171,10 @@ async def migrate_user_roles():
 
 @app.on_event("startup")
 async def startup_event():
+    from email_service import is_smtp_configured, smtp_status
+    from limiter import _redis_url
+    print(f"[startup] SMTP configured: {is_smtp_configured()} — {smtp_status()}")
+    print(f"[startup] REDIS_URL set: {bool(_redis_url)}")
     await init_db()
     await migrate_user_roles()
 

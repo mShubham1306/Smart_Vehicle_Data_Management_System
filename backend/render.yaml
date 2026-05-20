@@ -39,9 +39,9 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
-      # Redis — optional, leave blank if not using Redis on Render
+      # Do not set REDIS_URL unless you run Redis — empty avoids rate-limit crashes
       - key: REDIS_URL
-        sync: false
+        value: ""
       # ── AWS S3 for PDF Storage ─────────────────────────────────
       - key: AWS_ACCESS_KEY_ID
         sync: false
