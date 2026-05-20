@@ -490,9 +490,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     if (this.resendCooldown > 0) return;
     this.loading = true;
     this.authService.resendVerification({ email: this.email.trim().toLowerCase() }).subscribe({
-      next: () => {
+      next: (res: any) => {
         this.loading = false;
-        this.success = 'Verification email resent. Check your inbox.';
+        if (res?.email_verified) {
+          this.success = 'Your email is verified. You can sign in now.';
+          setTimeout(() => this.switchMode('login'), 1500);
+          return;
+        }
+        this.success = 'We sent a new code to your email. Check your inbox and spam folder.';
         this.resendCooldown = 60;
         this._resendInterval = setInterval(() => {
           this.resendCooldown--;

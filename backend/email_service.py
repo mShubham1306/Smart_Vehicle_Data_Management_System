@@ -15,6 +15,11 @@ SMTP_PORT    = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER    = os.getenv("SMTP_USER", "")
 SMTP_PASS    = os.getenv("SMTP_PASS", "")
 APP_NAME     = os.getenv("APP_NAME", "SmartInsure")
+
+
+def is_smtp_configured() -> bool:
+    """True when outbound email can be sent (Gmail/app password on Render, etc.)."""
+    return bool(SMTP_USER and SMTP_PASS)
 APP_URL      = os.getenv("APP_URL", "http://localhost:4200")
 FROM_NAME    = os.getenv("FROM_NAME", "SmartInsure Security")
 

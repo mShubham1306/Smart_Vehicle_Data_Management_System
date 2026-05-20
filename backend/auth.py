@@ -18,7 +18,8 @@ from bson import ObjectId
 import audit as audit_log
 from email_service import (
     send_verification_email, send_otp_email, send_welcome_email,
-    send_login_alert, send_security_alert, send_account_locked_email
+    send_login_alert, send_security_alert, send_account_locked_email,
+    is_smtp_configured,
 )
 import asyncio
 
@@ -273,25 +274,45 @@ async def register(payload: Dict[str, Any], request: Request):
         detail=f"Role: {role}, email_verified: {is_first_user}"
     )
 
-    # ── Send Emails (async, non-blocking) ────────────────────────────────── 
-    if not is_first_user:
+    # ── Email verification (only when SMTP is configured on the server) ───────
+    smtp_ok = is_smtp_configured()
+    needs_email_verify = not is_first_user and smtp_ok
+
+    if not is_first_user and smtp_ok:
         asyncio.create_task(send_verification_email(email, username, verify_url, verify_otp))
+    elif not is_first_user and not smtp_ok:
+        # No mail server — activate account immediately (code is not emailed anywhere)
+        await users_collection.update_one(
+            {"_id": result.inserted_id},
+            {
+                "$set": {"email_verified": True},
+                "$unset": {
+                    "email_verification_token": "",
+                    "email_verification_otp_h": "",
+                    "email_verify_exp": "",
+                },
+            },
+        )
     else:
         asyncio.create_task(send_welcome_email(email, username, role))
 
-    # ── Issue token only if verified ─────────────────────────────────────── 
+    email_verified = is_first_user or not smtp_ok
     token = None
-    user_resp = {"id": user_id, "username": username, "role": role,
-                 "assigned_sheet": "default", "admin_id": admin_id_field,
-                 "email_verified": is_first_user}
+    user_resp = {
+        "id": user_id, "username": username, "role": role,
+        "assigned_sheet": "default", "admin_id": admin_id_field,
+        "email_verified": email_verified,
+    }
 
-    if is_first_user:
+    if email_verified:
         token = create_access_token(user_id, username, role, "default", admin_id_field)
+        if not is_first_user and not smtp_ok:
+            user_resp["email_verified"] = True
 
     return {
-        "message": "Account created successfully." if is_first_user
+        "message": "Account created successfully." if email_verified
                    else "Account created! Please check your email to verify before logging in.",
-        "email_verification_required": not is_first_user,
+        "email_verification_required": needs_email_verify,
         "token": token,
         "user": user_resp,
     }
@@ -638,6 +659,20 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
     new_otp_h   = hashlib.sha256(new_otp.encode()).hexdigest()
     new_exp     = datetime.utcnow() + timedelta(hours=VERIFY_TOKEN_EXPIRE_H)
     verify_url  = f"{APP_URL}/verify-email?token={new_token}"
+
+    if not is_smtp_configured():
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {"email_verified": True},
+                "$unset": {
+                    "email_verification_token": "",
+                    "email_verification_otp_h": "",
+                    "email_verify_exp": "",
+                },
+            },
+        )
+        return {"message": "Your email is verified. You can sign in now.", "email_verified": True}
 
     await users_collection.update_one(
         {"_id": user["_id"]},
