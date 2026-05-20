@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { Subscription } from 'rxjs';
 
@@ -281,7 +281,11 @@ export class LoginComponent implements OnInit, OnDestroy {
   strengthLabel = '';
   strengthColor = '#555';
 
-  constructor(private authService: AuthService, public router: Router) {}
+  constructor(
+    private authService: AuthService,
+    public router: Router,
+    private route: ActivatedRoute,
+  ) {}
 
   ngOnInit() {
     if (this.authService.isLoggedIn()) {
@@ -290,6 +294,22 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     this.authService.warmUpApi().subscribe({ error: () => {} });
+
+    this.route.queryParams.subscribe(params => {
+      const token = params['token'];
+      if (token) {
+        this.authService.verifyEmailByLink(token).subscribe({
+          next: () => {
+            this.success = 'Email verified! You can sign in now.';
+            this.switchMode('login');
+          },
+          error: () => {
+            this.mode = 'verify_email';
+            this.error = 'This verification link is invalid or expired. Enter the code from your email or resend.';
+          },
+        });
+      }
+    });
 
     this._subs.push(
       this.authService.sessionWarning$.subscribe(mins => { this.sessionWarningMins = mins; }),
@@ -391,7 +411,7 @@ export class LoginComponent implements OnInit, OnDestroy {
         // Registration — email verification required
         if (res.email_verification_required) {
           this.mode = 'verify_email';
-          this.success = '';
+          this.success = 'We sent a 6-digit code to your email. Check inbox and spam.';
           this.error = '';
           return;
         }
@@ -475,6 +495,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     if (err.status === 429) return 'Too many attempts. Please wait a minute and try again.';
+    if (err.status === 503) return 'We could not send an email right now. Please try again in a few minutes.';
 
     const defaults: Record<string, string> = {
       login: 'Sign in failed. Please check your details and try again.',

@@ -223,6 +223,14 @@ export class AuthService {
     return this.postAuth('/resend-verification', payload);
   }
 
+  verifyEmailByLink(token: string): Observable<any> {
+    return this.http.get<any>(`${API}/verify-email`, { params: { token } });
+  }
+
+  getEmailStatus(): Observable<{ email_enabled: boolean }> {
+    return this.http.get<{ email_enabled: boolean }>(`${API}/email-status`);
+  }
+
   refreshAccessToken(): Observable<any> {
     const refreshToken = this.getRefreshToken();
     const userId = this.getUserId();

@@ -19,7 +19,8 @@ import audit as audit_log
 from email_service import (
     send_verification_email, send_otp_email, send_welcome_email,
     send_login_alert, send_security_alert, send_account_locked_email,
-    is_smtp_configured,
+    is_smtp_configured, smtp_status, test_smtp_connection,
+    APP_URL as FRONTEND_APP_URL,
 )
 import asyncio
 
@@ -238,7 +239,7 @@ async def register(payload: Dict[str, Any], request: Request):
     verify_otp   = str(random.randint(100000, 999999))
     verify_otp_h = hashlib.sha256(verify_otp.encode()).hexdigest()
     verify_exp   = datetime.utcnow() + timedelta(hours=VERIFY_TOKEN_EXPIRE_H)
-    verify_url   = f"{APP_URL}/verify-email?token={verify_token}"
+    verify_url   = f"{FRONTEND_APP_URL}/verify-email?token={verify_token}"
 
     # First admin is auto-verified (bootstrap); others require verification
     is_first_user = (total_users == 0)
@@ -274,29 +275,36 @@ async def register(payload: Dict[str, Any], request: Request):
         detail=f"Role: {role}, email_verified: {is_first_user}"
     )
 
-    # ── Email verification (only when SMTP is configured on the server) ───────
-    smtp_ok = is_smtp_configured()
-    needs_email_verify = not is_first_user and smtp_ok
+    # ── Email verification via SMTP OTP ───────────────────────────────────────
+    email_verified = is_first_user
+    needs_email_verify = False
 
-    if not is_first_user and smtp_ok:
-        asyncio.create_task(send_verification_email(email, username, verify_url, verify_otp))
-    elif not is_first_user and not smtp_ok:
-        # No mail server — activate account immediately (code is not emailed anywhere)
-        await users_collection.update_one(
-            {"_id": result.inserted_id},
-            {
-                "$set": {"email_verified": True},
-                "$unset": {
-                    "email_verification_token": "",
-                    "email_verification_otp_h": "",
-                    "email_verify_exp": "",
+    if not is_first_user:
+        if is_smtp_configured():
+            sent = await send_verification_email(email, username, verify_url, verify_otp)
+            if not sent:
+                await users_collection.delete_one({"_id": result.inserted_id})
+                raise HTTPException(
+                    status_code=503,
+                    detail="Could not send verification email. Please try again.",
+                )
+            needs_email_verify = True
+        else:
+            await users_collection.update_one(
+                {"_id": result.inserted_id},
+                {
+                    "$set": {"email_verified": True},
+                    "$unset": {
+                        "email_verification_token": "",
+                        "email_verification_otp_h": "",
+                        "email_verify_exp": "",
+                    },
                 },
-            },
-        )
+            )
+            email_verified = True
     else:
         asyncio.create_task(send_welcome_email(email, username, role))
 
-    email_verified = is_first_user or not smtp_ok
     token = None
     user_resp = {
         "id": user_id, "username": username, "role": role,
@@ -306,12 +314,10 @@ async def register(payload: Dict[str, Any], request: Request):
 
     if email_verified:
         token = create_access_token(user_id, username, role, "default", admin_id_field)
-        if not is_first_user and not smtp_ok:
-            user_resp["email_verified"] = True
 
     return {
         "message": "Account created successfully." if email_verified
-                   else "Account created! Please check your email to verify before logging in.",
+                   else "Account created! Please check your email for the 6-digit code.",
         "email_verification_required": needs_email_verify,
         "token": token,
         "user": user_resp,
@@ -556,6 +562,23 @@ async def me(current_user: Dict[str, Any] = Depends(get_current_user)):
     return {"user": {**current_user, **user}}
 
 
+@auth_router.get("/email-status")
+async def email_status():
+    """Public: whether outbound email is configured (no secrets)."""
+    status = smtp_status()
+    return {
+        "email_enabled": status["configured"],
+        "login_url": f"{FRONTEND_APP_URL}/login",
+    }
+
+
+@auth_router.get("/smtp-verify")
+async def smtp_verify(current_user: Dict[str, Any] = Depends(require_admin)):
+    """Admin: test SMTP login on Render (Gmail app password, etc.)."""
+    result = test_smtp_connection()
+    return {**smtp_status(), **result}
+
+
 @auth_router.get("/sessions")
 async def list_sessions(current_user: Dict[str, Any] = Depends(require_admin)):
     cursor = sessions_collection.find({}, {"_id": 0})
@@ -658,7 +681,7 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
     new_otp     = str(random.randint(100000, 999999))
     new_otp_h   = hashlib.sha256(new_otp.encode()).hexdigest()
     new_exp     = datetime.utcnow() + timedelta(hours=VERIFY_TOKEN_EXPIRE_H)
-    verify_url  = f"{APP_URL}/verify-email?token={new_token}"
+    verify_url  = f"{FRONTEND_APP_URL}/verify-email?token={new_token}"
 
     if not is_smtp_configured():
         await users_collection.update_one(
@@ -682,7 +705,12 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
             "email_verify_exp": new_exp,
         }}
     )
-    asyncio.create_task(send_verification_email(email, user.get("username", ""), verify_url, new_otp))
+    sent = await send_verification_email(email, user.get("username", ""), verify_url, new_otp)
+    if not sent:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not send verification email. Please try again.",
+        )
 
     await audit_log.log_action(
         audit_log.EMAIL_RESENT, user_id=str(user["_id"]),
@@ -704,14 +732,20 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
 
     user = await users_collection.find_one({"$or": [{"email": email}, {"username": email}]})
 
-    # Always return 200 to prevent email enumeration
     if not user:
-        return {"message": "If an account with this email exists, an OTP has been sent."}
+        return {"message": "If an account with this email exists, a reset code has been sent."}
+
+    if not is_smtp_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Email service is not available. Please contact support.",
+        )
 
     ip  = _get_ip(request)
     otp = str(random.randint(100000, 999999))
     otp_hash = hashlib.sha256(otp.encode()).hexdigest()
     expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+    to_addr = user.get("email") or email
 
     await users_collection.update_one(
         {"_id": user["_id"]},
@@ -722,24 +756,22 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
         }}
     )
 
+    username_str = user.get("username", email)
+    email_sent = await send_otp_email(to_addr, username_str, otp, ip)
+
     await audit_log.log_action(
         audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
-        username=user.get("username"), ip=ip, user_agent=_get_device(request)
+        username=username_str, ip=ip, user_agent=_get_device(request),
+        detail="Reset OTP emailed" if email_sent else "Reset OTP email failed",
     )
 
-    username_str = user.get("username", email)
-    email_sent = await send_otp_email(user.get("email", email), username_str, otp, ip)
-
     if not email_sent:
-        # Log the OTP for testing purposes (DO NOT expose to client)
-        print(f"[OTP_TEST_MODE] {username_str}: {otp} (expires in {OTP_EXPIRE_MINUTES} min)")
-        await audit_log.log_action(
-            audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
-            username=username_str, ip=ip, user_agent=_get_device(request),
-            detail=f"SMTP NOT CONFIGURED - Test OTP: {otp}"
+        raise HTTPException(
+            status_code=503,
+            detail="Could not send email. Please try again in a few minutes.",
         )
 
-    return {"message": "If an account with this email exists, an OTP has been sent."}
+    return {"message": "If an account with this email exists, a reset code has been sent."}
 
 
 @auth_router.post("/reset-password")

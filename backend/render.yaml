@@ -13,9 +13,9 @@ services:
         generateValue: true
       - key: JWT_ALGORITHM
         value: HS256
-      # IMPORTANT: Set this to your Vercel frontend URL (e.g. https://your-app.vercel.app)
+      # Frontend URL (verification links + reset emails)
       - key: APP_URL
-        sync: false
+        value: https://insuradrive.vercel.app
       # Comma-separated list of allowed frontend origins (your Vercel URL)
       - key: ALLOWED_ORIGINS
         value: https://insuradrive.vercel.app,http://localhost:4200

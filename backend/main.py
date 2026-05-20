@@ -194,9 +194,11 @@ def read_root():
 @app.get("/health")
 async def health_check():
     """Basic health check - API is running"""
+    from email_service import smtp_status
     return {
         "status": "healthy",
         "service": "SmartInsure API",
+        "email": smtp_status(),
         "timestamp": time.time()
     }
 
