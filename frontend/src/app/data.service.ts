@@ -97,6 +97,11 @@ export class DataService {
     return obs;
   }
 
+  /** Alias used by entry/dashboard components */
+  getSheets(): Observable<{ sheets: SheetInfo[] }> {
+    return this.loadSheets();
+  }
+
   createSheet(name: string): Observable<any> {
     return this.http.post<any>(`${API}/sheets`, { name }).pipe(
       tap(() => this.loadSheets())
