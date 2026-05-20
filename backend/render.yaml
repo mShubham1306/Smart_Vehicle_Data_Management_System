@@ -18,7 +18,7 @@ services:
         sync: false
       # Comma-separated list of allowed frontend origins (your Vercel URL)
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: https://insuradrive.vercel.app,http://localhost:4200
       - key: APP_NAME
         value: SmartInsure
       - key: FROM_NAME

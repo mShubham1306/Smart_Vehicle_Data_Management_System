@@ -164,8 +164,11 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'reset_password' | 'verif
             <ng-container *ngIf="mode === 'login' || mode === 'register'">
               <!-- Username -->
               <div class="field">
-                <label>Username</label>
-                <input type="text" [(ngModel)]="username" placeholder="Enter username" autocomplete="username">
+                <label>{{ mode === 'login' ? 'Username or Email' : 'Username' }}</label>
+                <input type="text" [(ngModel)]="username" [placeholder]="mode === 'login' ? 'Enter username or email' : 'Enter username (letters, numbers, _, -)'" autocomplete="username">
+                <div *ngIf="mode === 'register' && username && usernameError" style="font-size:0.68rem;color:#ef4444;margin-top:4px;font-weight:600">
+                  ⚠ {{ usernameError }}
+                </div>
               </div>
               <!-- Email (register only) -->
               <div class="field" *ngIf="mode === 'register'">
@@ -320,12 +323,22 @@ export class LoginComponent implements OnInit, OnDestroy {
     [this.strengthPct, this.strengthLabel, this.strengthColor] = map[score] ?? [0, '', '#555'];
   }
 
+  get usernameError(): string {
+    const u = this.username.trim().toLowerCase();
+    if (!u) return '';
+    if (u.length < 3) return 'Username must be at least 3 characters.';
+    if (u.length > 30) return 'Username too long (max 30 chars).';
+    if (u.includes('@')) return 'Username cannot contain @. Use the Email field for your email.';
+    if (!/^[a-z0-9_\-]+$/.test(u)) return 'Only letters, numbers, underscores, and hyphens allowed.';
+    return '';
+  }
+
   get isSubmitDisabled(): boolean {
     if (this.loading) return true;
     if (this.mode === 'forgot_password') return !this.email;
     if (this.mode === 'reset_password') return !this.otp || !this.password;
     if (this.mode === 'login') return !this.username || !this.password;
-    if (this.mode === 'register') return !this.username || !this.email || !this.password;
+    if (this.mode === 'register') return !this.username || !this.email || !this.password || !!this.usernameError;
     return true;
   }
 
@@ -392,12 +405,12 @@ export class LoginComponent implements OnInit, OnDestroy {
       error: (err: any) => {
         this.loading = false;
         const status = err.status;
-        const detail = err.error?.detail || 'An error occurred.';
+        const detail = this.formatAuthError(err);
 
         if (status === 423) {
           this.isLocked = true;
           this.error = detail;
-        } else if (detail.includes('email') && detail.includes('verified')) {
+        } else if (typeof err.error?.detail === 'string' && err.error.detail.toLowerCase().includes('email') && err.error.detail.toLowerCase().includes('verified')) {
           this.mode = 'verify_email';
           this.error = 'Please verify your email before logging in.';
         } else {
@@ -420,6 +433,23 @@ export class LoginComponent implements OnInit, OnDestroy {
         this.error = err.error?.detail || 'Invalid or expired OTP.';
       }
     });
+  }
+
+  /** Map HTTP/network/CORS failures to a clear message (avoids generic "An error occurred"). */
+  private formatAuthError(err: any): string {
+    if (!err || err.status === 0) {
+      return 'Cannot reach the API server. Check your connection, or wait if the backend is waking up (Render free tier).';
+    }
+    const d = err.error?.detail;
+    if (typeof d === 'string' && d.trim()) return d;
+    if (Array.isArray(d) && d.length) {
+      return d.map((x: any) => x?.msg || JSON.stringify(x)).join(' ');
+    }
+    if (err.status === 401) return 'Invalid username/email or password.';
+    if (err.status === 403) return 'Access denied. Verify your email or contact your admin.';
+    if (err.status === 429) return 'Too many attempts. Please wait a minute and try again.';
+    if (err.status >= 500) return 'Server error. Please try again in a moment.';
+    return err.message || 'Login failed. Please try again.';
   }
 
   resendVerification() {

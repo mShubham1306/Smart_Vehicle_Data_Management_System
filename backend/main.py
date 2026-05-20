@@ -36,12 +36,19 @@ async def get_redis_client():
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configure CORS — restrict to known frontend origin in production
-_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", os.getenv("APP_URL", "http://localhost:4200")).split(",")
-    if origin.strip()
+# Configure CORS — env ALLOWED_ORIGINS (comma-separated) plus known production frontends
+_cors_from_env = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", os.getenv("APP_URL", "http://localhost:4200")).split(",")
+    if o.strip()
 ]
+# Always merge these so Vercel / local dev work even if Render env only lists one origin
+_cors_defaults = [
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
+    "https://insuradrive.vercel.app",
+]
+_ALLOWED_ORIGINS = list(dict.fromkeys(_cors_from_env + _cors_defaults))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
@@ -172,9 +179,10 @@ async def startup_event():
 async def global_exception_handler(request, exc):
     tb = traceback.format_exc()
     print(f"UNHANDLED ERROR: {exc}\n{tb}")
+    # Do not reflect arbitrary Origin headers here — rely on CORSMiddleware + _ALLOWED_ORIGINS
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc), "traceback": tb}
+        content={"detail": str(exc), "traceback": tb},
     )
 
 

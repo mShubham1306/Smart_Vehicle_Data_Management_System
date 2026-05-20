@@ -308,7 +308,11 @@ async def login(request: Request, payload: Dict[str, Any]):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    user = await users_collection.find_one({"username": username})
+    # Allow login with either username or email
+    if "@" in username:
+        user = await users_collection.find_one({"email": username})
+    else:
+        user = await users_collection.find_one({"username": username})
 
     # ── Account locked? ──────────────────────────────────────────────────── 
     if user:
