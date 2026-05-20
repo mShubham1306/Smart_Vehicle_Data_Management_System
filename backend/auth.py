@@ -879,3 +879,38 @@ async def get_audit_logs(
         if "timestamp" in log and isinstance(log["timestamp"], datetime):
             log["timestamp"] = log["timestamp"].isoformat()
     return {"audit_logs": logs, "total": len(logs)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Danger: Reset / Clear Database (Bootstrap Endpoint)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@auth_router.post("/danger-nuke-db")
+async def danger_nuke_db(payload: Dict[str, Any]):
+    """
+    Clears all application collections (users, vehicles, uploads, mappings, etc.).
+    Requires the hardcoded confirmation key.
+    """
+    secret = payload.get("secret")
+    if not secret or secret != "smartinsure-dangerous-nuke-db-secret-key-12345":
+        raise HTTPException(status_code=403, detail="Invalid secret.")
+    
+    from database import (
+        vehicles_collection,
+        learned_mappings_collection,
+        uploads_collection,
+        sheets_collection
+    )
+    
+    # Nuke the database
+    await users_collection.delete_many({})
+    await vehicles_collection.delete_many({})
+    await learned_mappings_collection.delete_many({})
+    await uploads_collection.delete_many({})
+    await sheets_collection.delete_many({})
+    await sessions_collection.delete_many({})
+    await audit_logs_collection.delete_many({})
+    await revoked_tokens_collection.delete_many({})
+    
+    return {"message": "Database cleared successfully. Ready for a fresh start."}
+
