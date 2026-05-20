@@ -368,17 +368,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.error = ''; this.success = ''; this.loading = true;
 
     if (this.mode === 'forgot_password') {
-      this.authService.forgotPassword({ email: this.email.trim().toLowerCase() }).subscribe({
-        next: (res: any) => {
-          this.loading = false;
-          this.success = 'Reset code sent! Check your email inbox (and spam folder).';
-          this.mode = 'reset_password';
-        },
-        error: (err: any) => {
-          this.loading = false;
-          this.error = this.friendlyError(err, 'forgot');
-        }
-      });
+      this.runForgotPassword();
       return;
     }
 
@@ -455,10 +445,41 @@ export class LoginComponent implements OnInit, OnDestroy {
     });
   }
 
+  private runForgotPassword(attempt = 0) {
+    this.error = '';
+    this.success = '';
+    this.loading = true;
+    const email = this.email.trim().toLowerCase();
+
+    const doRequest = () => {
+      this.authService.forgotPassword({ email }).subscribe({
+        next: () => {
+          this.loading = false;
+          this.success = 'If this email is registered, a reset code was sent. Check inbox and spam.';
+          this.mode = 'reset_password';
+        },
+        error: (err: any) => {
+          if ((err?.status === 0 || err?.status >= 500) && attempt < 2) {
+            setTimeout(() => this.runForgotPassword(attempt + 1), 2000);
+            return;
+          }
+          this.loading = false;
+          this.error = this.friendlyError(err, 'forgot');
+        },
+      });
+    };
+
+    if (attempt === 0) {
+      this.authService.warmUpApi().subscribe({ next: () => doRequest(), error: () => doRequest() });
+    } else {
+      doRequest();
+    }
+  }
+
   /** User-facing messages only — never expose technical or server details. */
   private friendlyError(err: any, context: 'login' | 'register' | 'forgot' | 'reset' | 'verify'): string {
     if (!err || err.status === 0) {
-      return 'We could not connect right now. Please wait a moment and try again.';
+      return 'Unable to reach the server. Please wait a few seconds and try again.';
     }
 
     const detail = typeof err.error?.detail === 'string' ? err.error.detail.toLowerCase() : '';
