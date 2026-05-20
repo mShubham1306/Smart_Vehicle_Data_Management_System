@@ -1,4 +1,4 @@
 export const environment = {
-  production: true,
-  apiUrl: 'https://smart-vehicle-data-management-system.onrender.com/api'
+  production: false,
+  apiUrl: 'http://localhost:8000/api'
 };

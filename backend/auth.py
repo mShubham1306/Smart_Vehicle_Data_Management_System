@@ -282,13 +282,16 @@ async def register(payload: Dict[str, Any], request: Request):
         if is_smtp_configured():
             sent = await send_verification_email(email, username, verify_url, verify_otp)
             if not sent:
-                await users_collection.delete_one({"_id": result.inserted_id})
-                raise HTTPException(
-                    status_code=503,
-                    detail="Could not send verification email. Please try again.",
-                )
+                print(f"\n=================================================="
+                      f"\n[LOCAL WORKER / DEV FALLBACK] SMTP Email Failed to Send!"
+                      f"\nUser: {username} ({email})"
+                      f"\nVerification OTP: {verify_otp}"
+                      f"\nVerification URL: {verify_url}"
+                      f"\n==================================================\n")
             needs_email_verify = True
         else:
+            print(f"\n[LOCAL DEV] SMTP is not configured. Auto-verifying email for {username}.\n"
+                  f"Verification OTP would have been: {verify_otp}\n")
             await users_collection.update_one(
                 {"_id": result.inserted_id},
                 {
@@ -706,10 +709,13 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
     )
     sent = await send_verification_email(email, user.get("username", ""), verify_url, new_otp)
     if not sent:
-        raise HTTPException(
-            status_code=503,
-            detail="Could not send verification email. Please try again.",
-        )
+        print(f"\n=================================================="
+              f"\n[LOCAL WORKER / DEV FALLBACK] SMTP Resend Failed!"
+              f"\nUser: {user.get('username')} ({email})"
+              f"\nVerification OTP: {new_otp}"
+              f"\nVerification URL: {verify_url}"
+              f"\n==================================================\n")
+        return {"message": "Verification email failed to send, but code printed to server terminal. Check terminal to verify."}
 
     await audit_log.log_action(
         audit_log.EMAIL_RESENT, user_id=str(user["_id"]),
@@ -735,12 +741,6 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
         if not user:
             return {"message": "If an account with this email exists, a reset code has been sent."}
 
-        if not is_smtp_configured():
-            raise HTTPException(
-                status_code=503,
-                detail="Email service is not available. Please contact support.",
-            )
-
         ip  = _get_ip(request)
         otp = str(random.randint(100000, 999999))
         otp_hash = hashlib.sha256(otp.encode()).hexdigest()
@@ -757,19 +757,29 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
         )
 
         username_str = user.get("username", email)
-        email_sent = await send_otp_email(to_addr, username_str, otp, ip)
+        
+        email_sent = False
+        if is_smtp_configured():
+            email_sent = await send_otp_email(to_addr, username_str, otp, ip)
+        else:
+            print(f"\n=================================================="
+                  f"\n[LOCAL DEV] SMTP is not configured. Password reset code generated."
+                  f"\nUser: {username_str} ({to_addr})"
+                  f"\nReset OTP: {otp}"
+                  f"\n==================================================\n")
+
+        if is_smtp_configured() and not email_sent:
+            print(f"\n=================================================="
+                  f"\n[LOCAL WORKER / DEV FALLBACK] SMTP Reset Email Failed!"
+                  f"\nUser: {username_str} ({to_addr})"
+                  f"\nReset OTP: {otp}"
+                  f"\n==================================================\n")
 
         await audit_log.log_action(
             audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
             username=username_str, ip=ip, user_agent=_get_device(request),
-            detail="Reset OTP emailed" if email_sent else "Reset OTP email failed",
+            detail="Reset OTP emailed" if email_sent else ("Reset OTP printed to console (SMTP offline)" if not is_smtp_configured() else "Reset OTP print fallback (SMTP failed)"),
         )
-
-        if not email_sent:
-            raise HTTPException(
-                status_code=503,
-                detail="Could not send email. Please try again in a few minutes.",
-            )
 
         return {"message": "If an account with this email exists, a reset code has been sent."}
     except HTTPException:

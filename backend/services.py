@@ -698,8 +698,13 @@ def _schedule_persist(mapping_report: Dict[str, str], user_id: str) -> None:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             asyncio.ensure_future(_do())
+        else:
+            loop.run_until_complete(_do())
     except Exception:
-        pass  # Non-critical
+        try:
+            asyncio.run(_do())
+        except Exception as exc:
+            logger.warning(f"[LearnedCache] Failed to persist mappings: {exc}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

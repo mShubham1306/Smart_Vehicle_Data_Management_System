@@ -38,7 +38,12 @@ VERIFY_OTP_EXPIRE_MIN = int(os.getenv("VERIFY_OTP_EXPIRE_MIN", "60"))
 
 
 def is_smtp_configured() -> bool:
-    return bool(SMTP_USER and SMTP_PASS)
+    if not SMTP_USER or not SMTP_PASS:
+        return False
+    # Check for default template placeholders
+    if "your-email" in SMTP_USER or "your-16-char" in SMTP_PASS:
+        return False
+    return True
 
 
 def smtp_status() -> Dict[str, Any]:
