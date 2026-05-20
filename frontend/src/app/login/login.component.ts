@@ -289,6 +289,8 @@ export class LoginComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.authService.warmUpApi().subscribe({ error: () => {} });
+
     this._subs.push(
       this.authService.sessionWarning$.subscribe(mins => { this.sessionWarningMins = mins; }),
       this.authService.requireReauth$.subscribe(needed => { this.showReauth = needed; })
@@ -354,7 +356,7 @@ export class LoginComponent implements OnInit, OnDestroy {
         },
         error: (err: any) => {
           this.loading = false;
-          this.error = err.error?.detail || 'User not found.';
+          this.error = this.friendlyError(err, 'forgot');
         }
       });
       return;
@@ -369,7 +371,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.success = 'Password reset! You can now sign in.';
           setTimeout(() => this.switchMode('login'), 1500);
         },
-        error: (err: any) => { this.loading = false; this.error = err.error?.detail || 'Reset failed.'; }
+        error: (err: any) => { this.loading = false; this.error = this.friendlyError(err, 'reset'); }
       });
       return;
     }
@@ -397,25 +399,23 @@ export class LoginComponent implements OnInit, OnDestroy {
         const role = res?.user?.role ?? this.authService.getRole();
         if (this.mode === 'login' && this.isAdminLogin && role !== 'admin') {
           this.authService.logout();
-          this.error = 'This account does not have admin privileges.';
+          this.error = 'This account cannot sign in as admin. Try user login instead.';
           return;
         }
         this.router.navigate([role === 'admin' ? '/app/dashboard' : '/app/search']);
       },
       error: (err: any) => {
         this.loading = false;
-        const status = err.status;
-        const detail = this.formatAuthError(err);
-
-        if (status === 423) {
+        if (err.status === 423) {
           this.isLocked = true;
-          this.error = detail;
-        } else if (typeof err.error?.detail === 'string' && err.error.detail.toLowerCase().includes('email') && err.error.detail.toLowerCase().includes('verified')) {
-          this.mode = 'verify_email';
-          this.error = 'Please verify your email before logging in.';
-        } else {
-          this.error = detail;
         }
+        const raw = typeof err.error?.detail === 'string' ? err.error.detail.toLowerCase() : '';
+        if (raw.includes('email') && raw.includes('verified')) {
+          this.mode = 'verify_email';
+          this.error = 'Please verify your email before signing in.';
+          return;
+        }
+        this.error = this.friendlyError(err, this.mode === 'register' ? 'register' : 'login');
       }
     });
   }
@@ -430,26 +430,60 @@ export class LoginComponent implements OnInit, OnDestroy {
       },
       error: (err: any) => {
         this.loading = false;
-        this.error = err.error?.detail || 'Invalid or expired OTP.';
+        this.error = this.friendlyError(err, 'verify');
       }
     });
   }
 
-  /** Map HTTP/network/CORS failures to a clear message (avoids generic "An error occurred"). */
-  private formatAuthError(err: any): string {
+  /** User-facing messages only — never expose technical or server details. */
+  private friendlyError(err: any, context: 'login' | 'register' | 'forgot' | 'reset' | 'verify'): string {
     if (!err || err.status === 0) {
-      return 'Cannot reach the API server. Check your connection, or wait if the backend is waking up (Render free tier).';
+      return 'We could not connect right now. Please wait a moment and try again.';
     }
-    const d = err.error?.detail;
-    if (typeof d === 'string' && d.trim()) return d;
-    if (Array.isArray(d) && d.length) {
-      return d.map((x: any) => x?.msg || JSON.stringify(x)).join(' ');
+
+    const detail = typeof err.error?.detail === 'string' ? err.error.detail.toLowerCase() : '';
+
+    if (context === 'register') {
+      if (err.status === 409 && detail.includes('username')) return 'This username is already taken. Please choose another.';
+      if (err.status === 409 && detail.includes('email')) return 'This email is already registered. Try signing in instead.';
+      if (detail.includes('password')) return 'Please choose a stronger password and try again.';
+      if (detail.includes('username')) return 'Please check your username and try again.';
+      if (detail.includes('email')) return 'Please enter a valid email address.';
     }
-    if (err.status === 401) return 'Invalid username/email or password.';
-    if (err.status === 403) return 'Access denied. Verify your email or contact your admin.';
+
+    if (context === 'login') {
+      if (err.status === 401) return 'Incorrect username or password.';
+      if (err.status === 403) return 'Please verify your email before signing in.';
+      if (err.status === 423) return 'Too many failed attempts. Please try again later.';
+    }
+
+    if (context === 'forgot') {
+      if (err.status === 404 || err.status === 401) return 'No account found with this email.';
+    }
+
+    if (context === 'reset') {
+      if (detail.includes('otp') || detail.includes('code') || detail.includes('expired')) {
+        return 'Invalid or expired code. Please request a new one.';
+      }
+      if (detail.includes('password')) return 'Please choose a stronger password and try again.';
+    }
+
+    if (context === 'verify') {
+      if (detail.includes('otp') || detail.includes('code') || detail.includes('expired')) {
+        return 'Invalid or expired code. Please try again or resend.';
+      }
+    }
+
     if (err.status === 429) return 'Too many attempts. Please wait a minute and try again.';
-    if (err.status >= 500) return 'Server error. Please try again in a moment.';
-    return err.message || 'Login failed. Please try again.';
+
+    const defaults: Record<string, string> = {
+      login: 'Sign in failed. Please check your details and try again.',
+      register: 'Could not create your account. Please check your details and try again.',
+      forgot: 'Could not send reset code. Please try again.',
+      reset: 'Could not reset password. Please try again.',
+      verify: 'Verification failed. Please try again.',
+    };
+    return defaults[context] || 'Something went wrong. Please try again.';
   }
 
   resendVerification() {

@@ -182,7 +182,7 @@ async def global_exception_handler(request, exc):
     # Do not reflect arbitrary Origin headers here — rely on CORSMiddleware + _ALLOWED_ORIGINS
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc), "traceback": tb},
+        content={"detail": "Something went wrong. Please try again."},
     )
 
 

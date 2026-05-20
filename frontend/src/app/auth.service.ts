@@ -1,10 +1,12 @@
 import { Injectable, NgZone } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap, interval, Subscription } from 'rxjs';
+import { BehaviorSubject, Observable, tap, interval, Subscription, timer, throwError } from 'rxjs';
+import { retry } from 'rxjs/operators';
 import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
 
 const API       = environment.apiUrl + '/auth';
+const API_BASE  = environment.apiUrl.replace(/\/api\/?$/, '');
 const TOKEN_KEY = 'smartinsure_token';
 const USER_KEY  = 'smartinsure_user';
 const REFRESH_KEY = 'smartinsure_refresh';
@@ -158,8 +160,23 @@ export class AuthService {
 
   // ── Public Auth Methods ───────────────────────────────────────────────────
 
+  /** Wake backend on cold start (Render free tier) — no UI side effects */
+  warmUpApi(): Observable<unknown> {
+    return this.http.get(`${API_BASE}/health`);
+  }
+
+  private postAuth(path: string, payload: unknown): Observable<any> {
+    return this.http.post<any>(`${API}${path}`, payload).pipe(
+      retry({
+        count: 2,
+        delay: (err, attempt) =>
+          err?.status === 0 ? timer(1500 * attempt) : throwError(() => err),
+      }),
+    );
+  }
+
   login(payload: any): Observable<any> {
-    return this.http.post<any>(`${API}/login`, payload).pipe(
+    return this.postAuth('/login', payload).pipe(
       tap((res) => {
         if (res.token && res.user) {
           this.setSession(res.token, res.user, res.refresh_token, res.expires_in_hours);
@@ -169,7 +186,7 @@ export class AuthService {
   }
 
   register(payload: any): Observable<any> {
-    return this.http.post<any>(`${API}/register`, payload).pipe(
+    return this.postAuth('/register', payload).pipe(
       tap((res) => {
         if (res.token && res.user) {
           this.setSession(res.token, res.user, res.refresh_token, res.expires_in_hours);
@@ -191,19 +208,19 @@ export class AuthService {
   }
 
   forgotPassword(payload: any): Observable<any> {
-    return this.http.post<any>(`${API}/forgot-password`, payload);
+    return this.postAuth('/forgot-password', payload);
   }
 
   resetPassword(payload: any): Observable<any> {
-    return this.http.post<any>(`${API}/reset-password`, payload);
+    return this.postAuth('/reset-password', payload);
   }
 
   verifyEmailOtp(payload: any): Observable<any> {
-    return this.http.post<any>(`${API}/verify-email-otp`, payload);
+    return this.postAuth('/verify-email-otp', payload);
   }
 
   resendVerification(payload: any): Observable<any> {
-    return this.http.post<any>(`${API}/resend-verification`, payload);
+    return this.postAuth('/resend-verification', payload);
   }
 
   refreshAccessToken(): Observable<any> {
