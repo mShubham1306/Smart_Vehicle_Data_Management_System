@@ -17,8 +17,23 @@ SMTP_USER = os.getenv("SMTP_USER", "").strip()
 SMTP_PASS = os.getenv("SMTP_PASS", "").replace(" ", "")  # Gmail app passwords often copied with spaces
 SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "").lower() in ("1", "true", "yes")
 APP_NAME = os.getenv("APP_NAME", "SmartInsure")
-APP_URL = os.getenv("APP_URL", "https://insuradrive.vercel.app").rstrip("/")
 FROM_NAME = os.getenv("FROM_NAME", "SmartInsure Security")
+_PRODUCTION_FRONTEND = "https://insuradrive.vercel.app"
+
+
+def get_frontend_url() -> str:
+    """Use Vercel URL in production even if APP_URL on Render was left as localhost."""
+    url = os.getenv("APP_URL", _PRODUCTION_FRONTEND).strip().rstrip("/")
+    if "localhost" in url or "127.0.0.1" in url:
+        for part in os.getenv("ALLOWED_ORIGINS", _PRODUCTION_FRONTEND).split(","):
+            part = part.strip().rstrip("/")
+            if part.startswith("https://"):
+                return part
+        return _PRODUCTION_FRONTEND
+    return url
+
+
+APP_URL = get_frontend_url()
 VERIFY_OTP_EXPIRE_MIN = int(os.getenv("VERIFY_OTP_EXPIRE_MIN", "60"))
 
 
@@ -34,7 +49,7 @@ def smtp_status() -> Dict[str, Any]:
         "port": SMTP_PORT,
         "use_ssl": SMTP_USE_SSL or SMTP_PORT == 465,
         "from_user": SMTP_USER[:3] + "***" if SMTP_USER else None,
-        "app_url": APP_URL,
+        "app_url": get_frontend_url(),
     }
 
 

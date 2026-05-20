@@ -19,8 +19,7 @@ import audit as audit_log
 from email_service import (
     send_verification_email, send_otp_email, send_welcome_email,
     send_login_alert, send_security_alert, send_account_locked_email,
-    is_smtp_configured, smtp_status, test_smtp_connection,
-    APP_URL as FRONTEND_APP_URL,
+    is_smtp_configured, smtp_status, test_smtp_connection, get_frontend_url,
 )
 import asyncio
 
@@ -239,7 +238,7 @@ async def register(payload: Dict[str, Any], request: Request):
     verify_otp   = str(random.randint(100000, 999999))
     verify_otp_h = hashlib.sha256(verify_otp.encode()).hexdigest()
     verify_exp   = datetime.utcnow() + timedelta(hours=VERIFY_TOKEN_EXPIRE_H)
-    verify_url   = f"{FRONTEND_APP_URL}/verify-email?token={verify_token}"
+    verify_url   = f"{get_frontend_url()}/verify-email?token={verify_token}"
 
     # First admin is auto-verified (bootstrap); others require verification
     is_first_user = (total_users == 0)
@@ -568,7 +567,7 @@ async def email_status():
     status = smtp_status()
     return {
         "email_enabled": status["configured"],
-        "login_url": f"{FRONTEND_APP_URL}/login",
+        "login_url": f"{get_frontend_url()}/login",
     }
 
 
@@ -681,7 +680,7 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
     new_otp     = str(random.randint(100000, 999999))
     new_otp_h   = hashlib.sha256(new_otp.encode()).hexdigest()
     new_exp     = datetime.utcnow() + timedelta(hours=VERIFY_TOKEN_EXPIRE_H)
-    verify_url  = f"{FRONTEND_APP_URL}/verify-email?token={new_token}"
+    verify_url  = f"{get_frontend_url()}/verify-email?token={new_token}"
 
     if not is_smtp_configured():
         await users_collection.update_one(
