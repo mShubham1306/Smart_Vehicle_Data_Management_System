@@ -5,7 +5,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { Subscription } from 'rxjs';
 
-type Mode = 'login' | 'register' | 'forgot_password' | 'reset_password' | 'verify_email';
+type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_password' | 'verify_email';
 
 @Component({
   selector: 'app-login',
@@ -99,7 +99,7 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'reset_password' | 'verif
             <button class="tab" [class.active]="mode==='login'" (click)="switchMode('login')">Sign In</button>
             <button class="tab" [class.active]="mode==='register'" (click)="switchMode('register')">Create Account</button>
           </div>
-          <div class="tabs" *ngIf="mode === 'forgot_password' || mode === 'reset_password'">
+          <div class="tabs" *ngIf="mode === 'forgot_password' || mode === 'verify_otp' || mode === 'reset_password'">
             <button class="tab active" style="text-align:left;padding-left:28px" disabled>Password Reset</button>
             <button class="tab" style="text-align:right;padding-right:28px" (click)="switchMode('login')">← Back</button>
           </div>
@@ -226,14 +226,28 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'reset_password' | 'verif
               </button>
             </ng-container>
 
-            <!-- ══ RESET PASSWORD MODE ══ -->
-            <ng-container *ngIf="mode === 'reset_password'">
+            <!-- ══ VERIFY OTP MODE ══ -->
+            <ng-container *ngIf="mode === 'verify_otp'">
               <div class="info" style="margin-bottom:16px">
-                <p style="color:#60a5fa;font-size:0.78rem;margin:0">Check your email for the 6-digit reset code. It expires in 15 minutes.</p>
+                <p style="color:#60a5fa;font-size:0.78rem;margin:0">We sent a 6-digit reset code to <strong style="color:#fff;">{{ email }}</strong>. It expires in 5 minutes.</p>
               </div>
               <div class="field">
                 <label>6-Digit OTP</label>
                 <input class="otp-input" type="text" [(ngModel)]="otp" maxlength="6" placeholder="000000" autocomplete="one-time-code">
+              </div>
+              <button class="btn-submit btn-admin" [disabled]="loading || otp.length !== 6" (click)="submitVerifyOtp()">
+                <span *ngIf="!loading">→ Verify Code</span>
+                <span *ngIf="loading" style="display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin"></span>Verifying…</span>
+              </button>
+              <button class="btn-secondary" [disabled]="resendCooldown > 0" (click)="resendResetOtp()">
+                {{ resendCooldown > 0 ? 'Resend code in ' + resendCooldown + 's' : '↺ Resend Reset Code' }}
+              </button>
+            </ng-container>
+
+            <!-- ══ RESET PASSWORD MODE ══ -->
+            <ng-container *ngIf="mode === 'reset_password'">
+              <div class="info" style="margin-bottom:16px">
+                <p style="color:#22c55e;font-size:0.78rem;margin:0">Code verified successfully! Choose a strong new password below.</p>
               </div>
               <div class="field">
                 <label>New Password</label>
@@ -243,9 +257,23 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'reset_password' | 'verif
                     <div class="strength-fill" [style.width]="strengthPct + '%'" [style.background]="strengthColor"></div>
                   </div>
                   <div class="strength-label" [style.color]="strengthColor">{{ strengthLabel }}</div>
+                  <div class="req-list">
+                    <div class="req-item" [class.met]="pw.length" [class.unmet]="!pw.length">
+                      <span>{{ pw.length ? '✓' : '○' }}</span> 8+ chars
+                    </div>
+                    <div class="req-item" [class.met]="pw.upper" [class.unmet]="!pw.upper">
+                      <span>{{ pw.upper ? '✓' : '○' }}</span> Uppercase
+                    </div>
+                    <div class="req-item" [class.met]="pw.digit" [class.unmet]="!pw.digit">
+                      <span>{{ pw.digit ? '✓' : '○' }}</span> Number
+                    </div>
+                    <div class="req-item" [class.met]="pw.symbol" [class.unmet]="!pw.symbol">
+                      <span>{{ pw.symbol ? '✓' : '○' }}</span> Symbol
+                    </div>
+                  </div>
                 </ng-container>
               </div>
-              <button class="btn-submit btn-admin" [disabled]="loading || !otp || !password" (click)="submit()">
+              <button class="btn-submit btn-admin" [disabled]="loading || strengthPct < 100" (click)="submitResetPassword()">
                 <span *ngIf="!loading">→ Reset Password</span>
                 <span *ngIf="loading" style="display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin"></span>Resetting…</span>
               </button>
@@ -373,16 +401,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     if (this.mode === 'reset_password') {
-      this.authService.resetPassword({
-        email: this.email.trim().toLowerCase(), otp: this.otp, new_password: this.password
-      }).subscribe({
-        next: () => {
-          this.loading = false;
-          this.success = 'Password reset! You can now sign in.';
-          setTimeout(() => this.switchMode('login'), 1500);
-        },
-        error: (err: any) => { this.loading = false; this.error = this.friendlyError(err, 'reset'); }
-      });
+      this.submitResetPassword();
       return;
     }
 
@@ -445,6 +464,17 @@ export class LoginComponent implements OnInit, OnDestroy {
     });
   }
 
+  private startResendCooldown() {
+    this.resendCooldown = 60;
+    clearInterval(this._resendInterval);
+    this._resendInterval = setInterval(() => {
+      this.resendCooldown--;
+      if (this.resendCooldown <= 0) {
+        clearInterval(this._resendInterval);
+      }
+    }, 1000);
+  }
+
   private runForgotPassword(attempt = 0) {
     this.error = '';
     this.success = '';
@@ -456,7 +486,9 @@ export class LoginComponent implements OnInit, OnDestroy {
         next: () => {
           this.loading = false;
           this.success = 'If this email is registered, a reset code was sent. Check inbox and spam.';
-          this.mode = 'reset_password';
+          this.mode = 'verify_otp';
+          this.otp = ''; // Clear any stale OTP input
+          this.startResendCooldown();
         },
         error: (err: any) => {
           if ((err?.status === 0 || err?.status >= 500) && attempt < 2) {
@@ -474,6 +506,68 @@ export class LoginComponent implements OnInit, OnDestroy {
     } else {
       doRequest();
     }
+  }
+
+  submitVerifyOtp() {
+    this.error = '';
+    this.success = '';
+    this.loading = true;
+    const email = this.email.trim().toLowerCase();
+    this.authService.verifyOtp({ email, otp: this.otp }).subscribe({
+      next: () => {
+        this.loading = false;
+        this.success = 'Code verified successfully! Choose a strong new password below.';
+        this.mode = 'reset_password';
+        this.password = ''; // Clear password field
+        this.strengthPct = 0; // Reset password strength meter
+        this.strengthLabel = '';
+      },
+      error: (err: any) => {
+        this.loading = false;
+        this.error = this.friendlyError(err, 'verify');
+      }
+    });
+  }
+
+  submitResetPassword() {
+    if (this.strengthPct < 100) {
+      this.error = 'Please choose a stronger password matching all security requirements.';
+      return;
+    }
+    this.error = '';
+    this.success = '';
+    this.loading = true;
+    const email = this.email.trim().toLowerCase();
+    this.authService.resetPassword({ email, otp: this.otp, new_password: this.password }).subscribe({
+      next: () => {
+        this.loading = false;
+        this.success = 'Password reset! You can now sign in.';
+        setTimeout(() => this.switchMode('login'), 1500);
+      },
+      error: (err: any) => {
+        this.loading = false;
+        this.error = this.friendlyError(err, 'reset');
+      }
+    });
+  }
+
+  resendResetOtp() {
+    if (this.resendCooldown > 0) return;
+    this.error = '';
+    this.success = '';
+    this.loading = true;
+    const email = this.email.trim().toLowerCase();
+    this.authService.forgotPassword({ email }).subscribe({
+      next: () => {
+        this.loading = false;
+        this.success = 'A new reset code has been sent. Please check your inbox and spam folder.';
+        this.startResendCooldown();
+      },
+      error: (err: any) => {
+        this.loading = false;
+        this.error = this.friendlyError(err, 'forgot');
+      }
+    });
   }
 
   /** User-facing messages only — never expose technical or server details. */

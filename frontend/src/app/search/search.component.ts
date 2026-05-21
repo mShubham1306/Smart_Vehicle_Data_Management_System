@@ -144,22 +144,7 @@ type PdfAction = 'download' | 'whatsapp' | 'regenerate' | null;
           <p *ngIf="currentQuoteId" class="text-xs text-textGray mt-2">Quote ID: <strong class="text-textLight">{{ currentQuoteId }}</strong></p>
         </div>
 
-        <div class="flex items-center gap-2 mb-5 no-print">
-          <button (click)="viewMode='document'" class="px-5 py-2 rounded-xl text-sm font-bold transition-all"
-            [style.background]="viewMode==='document' ? '#EF4444' : 'rgba(255,255,255,0.05)'"
-            [style.color]="viewMode==='document' ? '#fff' : '#A1A1AA'"
-            [style.border]="viewMode==='document' ? '1px solid rgba(239,68,68,0.4)' : '1px solid #333'">
-            📄 Premium Breakup
-          </button>
-          <button (click)="viewMode='card'" class="px-5 py-2 rounded-xl text-sm font-bold transition-all"
-            [style.background]="viewMode==='card' ? '#EF4444' : 'rgba(255,255,255,0.05)'"
-            [style.color]="viewMode==='card' ? '#fff' : '#A1A1AA'"
-            [style.border]="viewMode==='card' ? '1px solid rgba(239,68,68,0.4)' : '1px solid #333'">
-            🗂️ All Fields ({{ allFields.length }})
-          </button>
-        </div>
-
-        <div *ngIf="viewMode==='document'" id="doc-wrapper"
+        <div id="doc-wrapper"
           style="background:#e8e8e8;padding:20px;border-radius:12px;max-width:900px;margin:0 auto">
           <app-insurance-doc
             [data]="result.data"
@@ -173,15 +158,6 @@ type PdfAction = 'download' | 'whatsapp' | 'regenerate' | null;
             [systemId]="currentSystemId"
             [generatedAt]="currentGeneratedAt">
           </app-insurance-doc>
-        </div>
-
-        <div *ngIf="viewMode==='card'" class="rounded-2xl overflow-hidden no-print" style="background:#141414; border:1px solid #262626">
-          <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div *ngFor="let field of allFields" class="field-card">
-              <p class="field-label">{{ getLabel(field) }}</p>
-              <p class="field-value">{{ getVal(field) || '—' }}</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -365,10 +341,7 @@ export class SearchComponent implements OnInit, OnDestroy {
               `Quote ID: ${res.quote_id}\n` +
               `View/Download: ${res.url}`
             );
-            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-            const waUrl = isMobile
-              ? `https://api.whatsapp.com/send?text=${msg}`
-              : `https://web.whatsapp.com/send?text=${msg}`;
+            const waUrl = `https://api.whatsapp.com/send?text=${msg}`;
             window.open(waUrl, '_blank');
             this.showToast('WhatsApp opened with quote link.');
           }

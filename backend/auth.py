@@ -39,7 +39,7 @@ APP_URL                 = os.getenv("APP_URL", "http://localhost:4200")
 
 MAX_FAILED_ATTEMPTS     = 5        # Lock after this many failures
 LOCKOUT_MINUTES         = 15       # Lock duration
-OTP_EXPIRE_MINUTES      = 15       # OTP validity
+OTP_EXPIRE_MINUTES      = 5        # OTP validity
 VERIFY_TOKEN_EXPIRE_H   = 24       # Email verification link validity
 OTP_MAX_ATTEMPTS        = 5        # Max wrong OTP guesses
 
@@ -739,10 +739,25 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
         user = await users_collection.find_one({"$or": [{"email": email}, {"username": email}]})
 
         if not user:
-            return {"message": "If an account with this email exists, a reset code has been sent."}
+            # Prevent user enumeration by returning a generic success message
+            return {
+                "success": True,
+                "message": "If an account with this email exists, a reset code has been sent.",
+                "cooldown_seconds": 60
+            }
+
+        # Cooldown Check (60 seconds)
+        last_requested = user.get("reset_otp_requested_at")
+        if last_requested and (datetime.utcnow() - last_requested).total_seconds() < 60:
+            remaining = 60 - int((datetime.utcnow() - last_requested).total_seconds())
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining} seconds before requesting another code."
+            )
 
         ip  = _get_ip(request)
-        otp = str(random.randint(100000, 999999))
+        # Secure 6-digit OTP generation using secrets
+        otp = f"{secrets.SystemRandom().randint(0, 999999):06d}"
         otp_hash = hashlib.sha256(otp.encode()).hexdigest()
         expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
         to_addr = user.get("email") or email
@@ -750,27 +765,22 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
         await users_collection.update_one(
             {"_id": user["_id"]},
             {"$set": {
-                "reset_otp_h":        otp_hash,
-                "reset_otp_exp":      expire_time,
-                "reset_otp_attempts": 0,
+                "reset_otp_h":            otp_hash,
+                "reset_otp_exp":          expire_time,
+                "reset_otp_attempts":     0,
+                "reset_otp_requested_at": datetime.utcnow(),
             }}
         )
 
         username_str = user.get("username", email)
         
-        email_sent = False
-        if is_smtp_configured():
-            email_sent = await send_otp_email(to_addr, username_str, otp, ip)
-        else:
-            print(f"\n=================================================="
-                  f"\n[LOCAL DEV] SMTP is not configured. Password reset code generated."
-                  f"\nUser: {username_str} ({to_addr})"
-                  f"\nReset OTP: {otp}"
-                  f"\n==================================================\n")
+        # Attempt to send OTP email
+        email_sent = await send_otp_email(to_addr, username_str, otp, ip)
 
-        if is_smtp_configured() and not email_sent:
+        # Fallback: Print OTP to terminal if SMTP is unconfigured or failed
+        if not is_smtp_configured() or not email_sent:
             print(f"\n=================================================="
-                  f"\n[LOCAL WORKER / DEV FALLBACK] SMTP Reset Email Failed!"
+                  f"\n[LOCAL WORKER / DEV FALLBACK] PASSWORD RESET OTP GENERATED"
                   f"\nUser: {username_str} ({to_addr})"
                   f"\nReset OTP: {otp}"
                   f"\n==================================================\n")
@@ -781,12 +791,56 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
             detail="Reset OTP emailed" if email_sent else ("Reset OTP printed to console (SMTP offline)" if not is_smtp_configured() else "Reset OTP print fallback (SMTP failed)"),
         )
 
-        return {"message": "If an account with this email exists, a reset code has been sent."}
+        return {
+            "success": True,
+            "message": "If an account with this email exists, a reset code has been sent.",
+            "cooldown_seconds": 60
+        }
     except HTTPException:
         raise
     except Exception as exc:
         print(f"[forgot-password] Error: {exc}")
         raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
+
+
+@auth_router.post("/verify-otp")
+async def verify_otp(request: Request, payload: Dict[str, Any]):
+    email = str(payload.get("email", "")).strip().lower()
+    otp   = str(payload.get("otp", "")).strip()
+
+    if not email or not otp:
+        raise HTTPException(status_code=400, detail="Email and OTP are required.")
+
+    user = await users_collection.find_one({"$or": [{"email": email}, {"username": email}]})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+
+    attempts = user.get("reset_otp_attempts", 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many OTP attempts. Please request a new code.")
+
+    stored_hash = user.get("reset_otp_h")
+    stored_exp  = user.get("reset_otp_exp")
+
+    if not stored_hash:
+        raise HTTPException(status_code=400, detail="No pending password reset request. Please request a code.")
+
+    submitted_hash = hashlib.sha256(otp.encode()).hexdigest()
+    if submitted_hash != stored_hash:
+        await users_collection.update_one(
+            {"_id": user["_id"]}, {"$inc": {"reset_otp_attempts": 1}}
+        )
+        await audit_log.log_action(
+            audit_log.OTP_FAILED, user_id=str(user["_id"]),
+            username=user.get("username"), ip=_get_ip(request),
+            detail=f"Verification attempt {attempts + 1}/{OTP_MAX_ATTEMPTS}"
+        )
+        raise HTTPException(status_code=400, detail="Invalid OTP.")
+
+    if not stored_exp or datetime.utcnow() > stored_exp:
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+
+    return {"success": True, "message": "OTP verified successfully."}
 
 
 @auth_router.post("/reset-password")
@@ -806,7 +860,6 @@ async def reset_password(request: Request, payload: Dict[str, Any]):
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    # Check OTP attempt limit
     attempts = user.get("reset_otp_attempts", 0)
     if attempts >= OTP_MAX_ATTEMPTS:
         raise HTTPException(status_code=429, detail="Too many OTP attempts. Please request a new code.")
@@ -815,7 +868,7 @@ async def reset_password(request: Request, payload: Dict[str, Any]):
     stored_exp  = user.get("reset_otp_exp")
 
     if not stored_hash:
-        raise HTTPException(status_code=400, detail="No pending reset. Please request a new OTP.")
+        raise HTTPException(status_code=400, detail="No pending password reset. Please request a code.")
 
     submitted_hash = hashlib.sha256(otp.encode()).hexdigest()
     if submitted_hash != stored_hash:
@@ -825,7 +878,7 @@ async def reset_password(request: Request, payload: Dict[str, Any]):
         await audit_log.log_action(
             audit_log.OTP_FAILED, user_id=str(user["_id"]),
             username=user.get("username"), ip=_get_ip(request),
-            detail=f"Attempt {attempts + 1}/{OTP_MAX_ATTEMPTS}"
+            detail=f"Reset attempt {attempts + 1}/{OTP_MAX_ATTEMPTS}"
         )
         raise HTTPException(status_code=400, detail="Invalid OTP.")
 
@@ -838,11 +891,10 @@ async def reset_password(request: Request, payload: Dict[str, Any]):
         {"$set": {
             "password":            hashed,
             "password_changed_at": datetime.utcnow(),
-            # Invalidate any existing refresh tokens
             "refresh_token_hash":  None,
             "refresh_token_exp":   None,
         },
-         "$unset": {"reset_otp_h": "", "reset_otp_exp": "", "reset_otp_attempts": ""}}
+         "$unset": {"reset_otp_h": "", "reset_otp_exp": "", "reset_otp_attempts": "", "reset_otp_requested_at": ""}}
     )
 
     await audit_log.log_action(
@@ -857,7 +909,7 @@ async def reset_password(request: Request, payload: Dict[str, Any]):
             f"Your password was reset from IP: {_get_ip(request)}"
         ))
 
-    return {"message": "Password reset successfully. You can now log in with your new password."}
+    return {"success": True, "message": "Password reset successfully. You can now log in with your new password."}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -7,216 +7,161 @@ import { CommonModule, DatePipe } from '@angular/common';
   imports: [CommonModule],
   providers: [DatePipe],
   styles: [`
-    :host { display: block; font-family: 'Inter', 'Segoe UI', Arial, Helvetica, sans-serif; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :host { 
+      display: block; 
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+      background: #e8e8e8;
+      padding: 0;
+    }
+    
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+    }
 
     .doc {
-      background: #fff;
+      background: #ffffff;
       color: #1a1a1a;
       width: 100%;
       max-width: 820px;
       margin: 0 auto;
-      font-size: 11px;
-      line-height: 1.45;
-      border: 1px solid #e8e8e8;
+      font-size: 10.5px;
+      line-height: 1.4;
+      border: 1px solid #dcdcdc;
+      padding: 24px 30px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      position: relative;
     }
 
     /* ── Header ── */
     .hdr {
       display: flex;
-      align-items: flex-start;
       justify-content: space-between;
-      padding: 20px 24px 16px;
-      border-bottom: 3px solid #F58220;
+      align-items: flex-start;
+      margin-bottom: 18px;
+      gap: 20px;
     }
-    .logo-wrap {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .logo-box {
-      width: 52px; height: 52px;
-      background: linear-gradient(135deg, #EE3124, #c41e12);
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      color: #fff; font-weight: 900; font-size: 18px; letter-spacing: -0.5px;
-    }
-    .brand-name { font-size: 20px; font-weight: 800; color: #1a1a1a; }
-    .brand-sub { font-size: 10px; color: #666; margin-top: 2px; }
-    .hdr-logo-img { max-height: 48px; max-width: 140px; object-fit: contain; }
-    .greeting {
-      max-width: 420px;
-      font-size: 11px;
-      color: #444;
-      line-height: 1.55;
-      text-align: right;
-    }
-    .greeting strong { color: #1a1a1a; }
-
-    /* ── Section bar (ICICI orange) ── */
-    .sec-bar {
-      background: linear-gradient(90deg, #FDE8D4, #FCD5B0);
-      border-left: 4px solid #F58220;
-      padding: 7px 14px;
-      font-size: 11px;
-      font-weight: 800;
-      color: #7a3d00;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-    }
-
-    .sec-block { border-bottom: 1px solid #eee; }
-    .sec-body { padding: 12px 16px; }
-
-    /* ── Two-column detail grid ── */
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px 28px;
-    }
-    .grid-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px 16px;
-    }
-    .d-item { display: flex; flex-direction: column; gap: 2px; }
-    .d-lbl {
-      font-size: 9px; font-weight: 600; color: #888;
-      text-transform: uppercase; letter-spacing: 0.3px;
-    }
-    .d-val { font-size: 11px; font-weight: 700; color: #1a1a1a; word-break: break-word; }
-    .d-val.accent { color: #C41E12; }
-    .d-val.muted { color: #555; font-weight: 600; }
-
-    /* ── Premium tables ── */
-    .prem-wrap { padding: 0; }
-    .prem-table { width: 100%; border-collapse: collapse; }
-    .prem-table th {
-      background: #f5f5f5;
-      text-align: left;
-      padding: 8px 12px;
-      font-size: 9px;
-      font-weight: 700;
-      color: #555;
-      text-transform: uppercase;
-      border-bottom: 1px solid #ddd;
-    }
-    .prem-table td {
-      padding: 7px 12px;
-      font-size: 11px;
-      border-bottom: 1px solid #f0f0f0;
-      vertical-align: top;
-    }
-    .prem-table .r { text-align: right; font-weight: 600; white-space: nowrap; }
-    .prem-table .sub-hd td {
-      background: #fafafa;
-      font-weight: 800;
-      font-size: 10px;
-      color: #333;
-      border-top: 1px solid #e0e0e0;
-    }
-    .prem-table .tot td { background: #fff8f0; font-weight: 800; border-top: 2px solid #F58220; }
-    .prem-table .grand td {
-      background: linear-gradient(90deg, #F58220, #e86f10);
-      color: #fff;
-      font-size: 13px;
-      font-weight: 900;
-      border: none;
-    }
-    .prem-table .save td { background: #f0fdf4; color: #15803d; font-weight: 700; }
-    .prem-table .disc td { color: #15803d; }
-    .check { color: #22c55e; font-weight: 900; margin-right: 4px; }
-
-    /* ── Long-term comparison ── */
-    .lt-table { width: 100%; border-collapse: collapse; margin-top: 0; }
-    .lt-table th {
-      background: #F58220;
-      color: #fff;
-      padding: 8px;
-      font-size: 10px;
-      font-weight: 700;
-      text-align: center;
-    }
-    .lt-table td {
-      padding: 10px 8px;
-      text-align: center;
-      border: 1px solid #eee;
-      font-weight: 700;
-      font-size: 11px;
-    }
-    .lt-table .best {
-      background: #f0fdf4;
-      border: 2px solid #22c55e;
-      position: relative;
-    }
-    .save-badge {
-      display: inline-block;
-      background: #22c55e;
-      color: #fff;
-      font-size: 9px;
-      font-weight: 800;
-      padding: 2px 8px;
-      border-radius: 100px;
-      margin-top: 4px;
-    }
-    .strike { text-decoration: line-through; color: #999; font-size: 10px; font-weight: 500; display: block; }
-
-    /* ── Metadata strip ── */
-    .meta-strip {
-      background: #f8f9fa;
-      border-top: 1px dashed #ddd;
-      border-bottom: 1px dashed #ddd;
-      padding: 10px 16px;
-    }
-    .meta-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px 16px;
-    }
-    .meta-title {
-      font-size: 9px;
-      font-weight: 800;
-      color: #F58220;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 8px;
-      grid-column: 1 / -1;
-    }
-
-    /* ── Disclaimer ── */
-    .disclaimer {
-      padding: 10px 16px;
-      font-size: 9px;
-      color: #c41e12;
-      font-weight: 600;
-      font-style: italic;
-      border-bottom: 1px solid #eee;
-    }
-    .fine-print {
-      padding: 8px 16px;
-      font-size: 8px;
-      color: #888;
+    
+    .greeting-box {
+      flex: 1;
+      font-size: 10.5px;
+      color: #1a1a1a;
       line-height: 1.5;
     }
-
-    /* ── Footer bar ── */
-    .footer-bar {
-      background: linear-gradient(90deg, #F58220, #e86f10);
-      color: #fff;
-      padding: 14px 20px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+    
+    .greeting-box p {
+      margin-top: 6px;
     }
-    .footer-contact { display: flex; flex-wrap: wrap; gap: 16px; font-size: 10px; font-weight: 600; }
-    .footer-contact span { display: flex; align-items: center; gap: 5px; }
-    .footer-legal { font-size: 7px; opacity: 0.85; text-align: right; max-width: 280px; line-height: 1.4; }
+
+    .logo-banner {
+      width: 200px;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      border-radius: 4px;
+    }
+
+    /* ── Section Headers ── */
+    .sec-hdr {
+      background: #ffded4;
+      color: #1a1a1a;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border: 1px solid #dcdcdc;
+      border-bottom: none;
+      margin-top: 15px;
+      text-transform: capitalize;
+    }
+
+    /* ── Table Styling ── */
+    .grid-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #dcdcdc;
+      margin-bottom: 0px;
+    }
+
+    .grid-table td {
+      border: 1px solid #dcdcdc;
+      padding: 5px 8px;
+      font-size: 10.5px;
+      vertical-align: middle;
+    }
+
+    .grid-table td.lbl {
+      background: #f7f7f7;
+      color: #333333;
+      font-weight: 600;
+      width: 25%;
+    }
+
+    .grid-table td.val {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 400;
+      width: 25%;
+    }
+
+    .grid-table td.val-plain {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 400;
+    }
+
+    .grid-table td.lbl-hdr {
+      background: #f7f7f7;
+      color: #000000;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    /* Sub headers inside premium table */
+    .grid-table tr.sec-subhdr td {
+      background: #f2f2f2;
+      font-weight: 700;
+      color: #1a1a1a;
+      font-size: 10.5px;
+    }
+
+    /* ── Footer Strip ── */
+    .footer-strip {
+      background: linear-gradient(to right, #f58220, #e05e00);
+      color: #ffffff;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 8.5px;
+      line-height: 1.5;
+      margin-top: 25px;
+    }
+
+    .footer-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .footer-col.right {
+      text-align: right;
+      align-items: flex-end;
+    }
 
     @media print {
-      .doc { border: none; max-width: 100%; }
-      .sec-block { page-break-inside: avoid; }
+      :host {
+        background: #ffffff;
+        padding: 0;
+      }
+      .doc {
+        border: none;
+        box-shadow: none;
+        max-width: 100%;
+        padding: 0;
+      }
+      .grid-table tr {
+        page-break-inside: avoid;
+      }
     }
   `],
   template: `
@@ -224,297 +169,231 @@ import { CommonModule, DatePipe } from '@angular/common';
 
       <!-- HEADER -->
       <div class="hdr">
-        <div class="logo-wrap">
-          <img *ngIf="logoUrl" [src]="logoUrl" alt="Logo" class="hdr-logo-img" (error)="onImgErr($event)">
-          <div *ngIf="!logoUrl || logoFailed">
-            <div class="logo-box">SI</div>
-          </div>
-          <div>
-            <div class="brand-name">SmartInsure</div>
-            <div class="brand-sub">Vehicle Data Management Platform</div>
-          </div>
+        <div class="greeting-box">
+          <strong>Dear Customer,</strong>
+          <p>
+            Thank you for choosing us for your motor insurance needs. We are pleased to provide you with a quote for coverage, created on <strong>{{ formatDateOnly(generatedAt) }}</strong>. Please note that this quotation is valid for <strong>7 days</strong> from the date of issue.
+          </p>
         </div>
-        <div class="greeting">
-          <strong>Dear Customer,</strong><br>
-          Thank you for considering SmartInsure for your vehicle insurance needs.
-          Your quotation was generated on <strong>{{ formatDate(generatedAt) }}</strong>
-          and is valid for <strong>7 days</strong> from the date of issue.
-        </div>
-      </div>
-
-      <!-- GENERATED METADATA -->
-      <div class="meta-strip">
-        <div class="meta-title">Document Generation Details</div>
-        <div class="meta-grid">
-          <div class="d-item"><span class="d-lbl">Generated By</span><span class="d-val">{{ generatedByName || '—' }}</span></div>
-          <div class="d-item"><span class="d-lbl">Agent Name</span><span class="d-val">{{ agentName || '—' }}</span></div>
-          <div class="d-item"><span class="d-lbl">Field Agent</span><span class="d-val">{{ fieldAgentName || '—' }}</span></div>
-          <div class="d-item"><span class="d-lbl">Admin (Creator)</span><span class="d-val">{{ adminName || '—' }}</span></div>
-          <div class="d-item"><span class="d-lbl">User Role</span><span class="d-val">{{ userRole || '—' }}</span></div>
-          <div class="d-item"><span class="d-lbl">Quote ID</span><span class="d-val accent">{{ quoteId || 'Pending' }}</span></div>
-          <div class="d-item"><span class="d-lbl">System ID</span><span class="d-val muted" style="font-size:9px">{{ systemId || '—' }}</span></div>
-          <div class="d-item"><span class="d-lbl">Generated Date</span><span class="d-val">{{ formatDateOnly(generatedAt) }}</span></div>
-          <div class="d-item"><span class="d-lbl">Generated Time</span><span class="d-val">{{ formatTimeOnly(generatedAt) }}</span></div>
-        </div>
-      </div>
-
-      <!-- CUSTOMER INFORMATION -->
-      <div class="sec-block">
-        <div class="sec-bar">Customer Information</div>
-        <div class="sec-body grid-2">
-          <div class="d-item">
-            <span class="d-lbl">Insured Name</span>
-            <span class="d-val">{{ f('ownerName','OWNER NAME','customer name','NAME','insured name') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Mobile Number</span>
-            <span class="d-val">{{ f('ownerMobileNo','MOBILE','mobile','OWNER MOBILE NO','phone','contact') || '—' }}</span>
-          </div>
-          <div class="d-item" style="grid-column: 1 / -1">
-            <span class="d-lbl">Correspondence Address</span>
-            <span class="d-val">{{ f('ownerAddress','OWNER ADDRESS','address','ADDRESS') || '—' }}</span>
-          </div>
-        </div>
+        <img src="/icici-lombard-logo.png" alt="ICICI Lombard" class="logo-banner" (error)="onImgErr($event)">
       </div>
 
       <!-- VEHICLE DETAILS -->
-      <div class="sec-block">
-        <div class="sec-bar">Vehicle Details</div>
-        <div class="sec-body grid-2">
-          <div class="d-item">
-            <span class="d-lbl">Registration Number</span>
-            <span class="d-val accent">{{ vehicleNumber || f('Vehicle','vehicle','VEHICLE NO','registration') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">RTO Location</span>
-            <span class="d-val">{{ f('rtoLocation','RTO','rto','state','RTO LOCATION') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Manufacture / Model</span>
-            <span class="d-val">{{ f('vehicleManufacturerName','vehicleMake','make','MANUFACTURER') }} {{ f('vehicleModel','model','VEHICLE MODEL') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Manufacturing Year</span>
-            <span class="d-val">{{ f('manufacturingYear','YEAR','year','mfg year') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Engine Number</span>
-            <span class="d-val">{{ f('engineNum','engine number','engine no','ENGINE') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Chassis Number</span>
-            <span class="d-val">{{ f('chassisNum','chassis number','chassis no','CHASSIS') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Fuel Type</span>
-            <span class="d-val">{{ f('fuelType','FUEL','fuel') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Vehicle Class</span>
-            <span class="d-val">{{ f('vehicleClass','class','TYPE','vehicle type') || 'Two Wheeler' }}</span>
-          </div>
-        </div>
-      </div>
+      <div class="sec-hdr">Vehicle Details</div>
+      <table class="grid-table">
+        <tr>
+          <td class="lbl">Registration Number</td>
+          <td class="val" style="font-weight: 600;">{{ vehicleNumber || f('Vehicle','vehicle','VEHICLE NO','registration') || '—' }}</td>
+          <td class="lbl">RTO Location</td>
+          <td class="val">{{ f('rtoLocation','RTO','rto','state','RTO LOCATION') || '—' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Manufacture Model</td>
+          <td class="val" colspan="3">{{ f('vehicleManufacturerName','vehicleMake','make','MANUFACTURER') }} {{ f('vehicleModel','model','VEHICLE MODEL') || '—' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Manufacturing Year</td>
+          <td class="val">{{ f('manufacturingYear','YEAR','year','mfg year') || '—' }}</td>
+          <td class="lbl">Registration Date</td>
+          <td class="val">{{ f('registrationDate', 'REGISTRATION DATE', 'regDate', 'reg_date') || formatDateOnly(generatedAt) || '—' }}</td>
+        </tr>
+      </table>
 
       <!-- QUOTE DETAILS -->
-      <div class="sec-block">
-        <div class="sec-bar">Quote Details</div>
-        <div class="sec-body grid-2">
-          <div class="d-item">
-            <span class="d-lbl">Insurance Plan</span>
-            <span class="d-val">{{ f('insurancePlan','plan','PLAN','vehicleInsuranceCompanyName') || 'Two Wheeler Package' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Tenure</span>
-            <span class="d-val">{{ f('tenure','TENURE') || '1 Year Own Damage' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Insured Declared Value (IDV)</span>
-            <span class="d-val accent">₹ {{ fmtAmt(f('idv','IDV','insuredDeclaredValue') || idvDisplay()) }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Previous Insurer</span>
-            <span class="d-val">{{ f('vehicleInsuranceCompanyName','insurer','INSURANCE COMPANY','company') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Quote Start Date &amp; Time</span>
-            <span class="d-val">{{ formatDate(generatedAt) }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Quote Valid Till</span>
-            <span class="d-val">{{ quoteValidTill() }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Policy Expiry / Due Date</span>
-            <span class="d-val accent">{{ f('expiredInsuranceUpto','DUE DATE','due date','EXPIRY DATE','expiry') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Previous Policy Number</span>
-            <span class="d-val">{{ f('vehicleInsurancePolicyNumber','policy number','policy no','POLICY') || '—' }}</span>
-          </div>
-        </div>
-      </div>
+      <div class="sec-hdr">Quote Details</div>
+      <table class="grid-table">
+        <tr>
+          <td class="lbl">Insurance Plan</td>
+          <td class="val">{{ f('insurancePlan','plan','PLAN','vehicleInsuranceCompanyName') || 'Two Wheeler Package' }}</td>
+          <td class="lbl">Tenure</td>
+          <td class="val">{{ f('tenure','TENURE') || '1 year Own Damage +' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">CPA Tenure</td>
+          <td class="val">{{ f('cpaTenure','CPA_TENURE','cpa') || '1' }}</td>
+          <td class="lbl">Insured Declared Value (IDV)</td>
+          <td class="val" style="font-weight: 600;">₹ {{ fmtAmt(f('idv','IDV','insuredDeclaredValue') || idvDisplay()) }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Quote Start Date and Time</td>
+          <td class="val">{{ formatDate(generatedAt) }}</td>
+          <td class="lbl">Quote Valid Till</td>
+          <td class="val">{{ quoteValidTill() }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Policy Start Date</td>
+          <td class="val">{{ f('policyStartDate', 'POLICY_START_DATE', 'policyStart') || formatDateOnly(generatedAt) }}</td>
+          <td class="lbl">Policy End Date</td>
+          <td class="val">{{ f('policyEndDate', 'POLICY_END_DATE', 'policyEnd', 'expiredInsuranceUpto') || '—' }}</td>
+        </tr>
+      </table>
 
-      <!-- PLAN & PREMIUM DETAILS -->
-      <div class="sec-block">
-        <div class="sec-bar">Plan and Premium Details</div>
-        <div class="prem-wrap">
-          <table class="prem-table">
-            <thead>
-              <tr>
-                <th style="width:55%">Description</th>
-                <th class="r" style="width:45%">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="sub-hd">
-                <td colspan="2">Quote ID: <strong>{{ quoteId || '—' }}</strong> &nbsp;|&nbsp; Plan: <strong>Basic Plan</strong></td>
-              </tr>
-              <tr class="sub-hd">
-                <td colspan="2"><strong>Own Damage (A)</strong></td>
-              </tr>
-              <tr>
-                <td>
-                  <span class="check" *ngIf="hasZeroDep()">✓</span>
-                  Zero Depreciation Cover
-                  <span *ngIf="hasZeroDep()" style="color:#888;font-size:9px"> — Plan Type: SILVER</span>
-                </td>
-                <td class="r">{{ currency(calcZeroDep()) }}</td>
-              </tr>
-              <tr>
-                <td>Basic OD Premium</td>
-                <td class="r">{{ currency(calcBasicOD()) }}</td>
-              </tr>
-              <tr class="disc">
-                <td>Less: No Claim Bonus (NCB)</td>
-                <td class="r">- {{ currency(calcNCB()) }}</td>
-              </tr>
-              <tr>
-                <td>Add-on Cover Premium</td>
-                <td class="r">{{ currency(calcAddOn()) }}</td>
-              </tr>
-              <tr class="tot">
-                <td><strong>Total Own Damage Premium (A)</strong></td>
-                <td class="r"><strong>{{ currency(calcODTotal()) }}</strong></td>
-              </tr>
-              <tr class="sub-hd">
-                <td colspan="2"><strong>Third Party (B)</strong></td>
-              </tr>
-              <tr>
-                <td>Basic TP Premium</td>
-                <td class="r">{{ currency(f('tpPremium','TP PREMIUM','third party') || '0') }}</td>
-              </tr>
-              <tr class="tot">
-                <td><strong>Total Third Party Premium (B)</strong></td>
-                <td class="r"><strong>{{ currency(calcTPTotal()) }}</strong></td>
-              </tr>
-              <tr class="sub-hd">
-                <td colspan="2"><strong>Total Premium (A + B + C)</strong></td>
-              </tr>
-              <tr>
-                <td>Net Premium (A + B)</td>
-                <td class="r">{{ currency(calcNet()) }}</td>
-              </tr>
-              <tr>
-                <td>GST &#64; 18% (C)</td>
-                <td class="r">{{ currency(calcGST()) }}</td>
-              </tr>
-              <tr class="grand">
-                <td>Total Premium Payable (A + B + C)</td>
-                <td class="r">₹ {{ fmtAmt(total()) }}</td>
-              </tr>
-              <tr class="save" *ngIf="savingsAmount() > 0">
-                <td colspan="2" style="text-align:center">
-                  🎉 You save approximately <strong>₹ {{ fmtAmt(savingsAmount()) }}</strong> with applicable NCB &amp; add-on benefits
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <!-- PLAN AND PREMIUM DETAILS -->
+      <div class="sec-hdr">Plan and Premium Details</div>
+      <table class="grid-table">
+        <tr>
+          <td class="lbl-hdr" style="width: 50%;">Description</td>
+          <td class="lbl-hdr" colspan="2" style="width: 50%; text-align: right;">Basic Plan</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Quote ID</td>
+          <td class="val-plain" colspan="2" style="text-align: right; font-weight: 600;">{{ quoteId || '—' }}</td>
+        </tr>
+        
+        <!-- Own Damage Section -->
+        <tr class="sec-subhdr">
+          <td colspan="3">Own Damage (A)</td>
+        </tr>
+        <tr class="sec-subhdr">
+          <td colspan="3">Own Damage - Add-on Covers</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Zero Depreciation</td>
+          <td class="val-plain" style="text-align: center; color: #f58220; font-weight: bold; width: 15%;">{{ hasZeroDep() ? '✓' : '—' }}</td>
+          <td class="val-plain" style="text-align: right; width: 35%;">Plan Type: SILVER</td>
+        </tr>
+        <tr class="sec-subhdr">
+          <td colspan="3">Own Damage - Premium</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Basic OD Premium</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcBasicOD()) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain">NCB Discount (20%)</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcNCB()) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Total Own Damage Add-ons Premium</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcAddOn()) }}</td>
+        </tr>
+        <tr style="font-weight: 700;">
+          <td class="val-plain">Total Own Damage Premium (A)</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcODTotal()) }}</td>
+        </tr>
 
-      <!-- LONG TERM PLAN COMPARISON -->
-      <div class="sec-block">
-        <div class="sec-bar">Save more with Long Term Plans</div>
-        <div class="sec-body" style="padding:12px 16px 16px">
-          <table class="lt-table">
-            <thead>
-              <tr>
-                <th>Plan Type</th>
-                <th>1 Year</th>
-                <th>2 Year</th>
-                <th>3 Year</th>
-                <th>4 Year</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="font-weight:800;background:#fafafa">Basic Plan</td>
-                <td>₹ {{ fmtAmt(totalNum()) }}</td>
-                <td>₹ {{ fmtAmt(ltPremium(2)) }}</td>
-                <td>₹ {{ fmtAmt(ltPremium(3)) }}</td>
-                <td [class.best]="true">
-                  <span class="strike">₹ {{ fmtAmt(ltPremium(4, false)) }}</span>
-                  ₹ {{ fmtAmt(ltPremium(4)) }}
-                  <span class="save-badge">Save ₹{{ fmtAmt(ltSavings(4)) }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <!-- Third Party Section -->
+        <tr class="sec-subhdr">
+          <td colspan="3">Third Party (B)</td>
+        </tr>
+        <tr class="sec-subhdr">
+          <td colspan="3">Third Party - Add-ons</td>
+        </tr>
+        <tr>
+          <td class="val-plain" colspan="3" style="color: #666; font-style: italic; font-size: 9.5px; padding-left: 12px;">No Add-ons selected</td>
+        </tr>
+        <tr class="sec-subhdr">
+          <td colspan="3">Third Party - Premium</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Basic TP Premium</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcTPTotal()) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Total Third Party Add-ons Premium</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">₹ 0.00</td>
+        </tr>
+        <tr style="font-weight: 700;">
+          <td class="val-plain">Total Third Party Premium (B)</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcTPTotal()) }}</td>
+        </tr>
+
+        <!-- Total Premium Section -->
+        <tr class="sec-subhdr">
+          <td colspan="3">Total Premium (A+B+C)</td>
+        </tr>
+        <tr>
+          <td class="val-plain">Net Premium (A + B)</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcNet()) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain">GST&#64;18% C</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right;">{{ currency(calcGST()) }}</td>
+        </tr>
+        <tr style="font-weight: 700; background: #fffcf9;">
+          <td class="val-plain">Total Premium Payable (A+B+C)</td>
+          <td class="val-plain"></td>
+          <td class="val-plain" style="text-align: right; font-size: 11px;">₹ {{ fmtAmt(total()) }}</td>
+        </tr>
+      </table>
+
+      <!-- LONG TERM PLANS -->
+      <div class="sec-hdr">Save more with Long Term Plans</div>
+      <table class="grid-table">
+        <tr>
+          <td class="lbl" style="width: 50%; font-weight: 700;">Plan Type</td>
+          <td class="lbl" style="width: 50%; font-weight: 700;">Basic Plan</td>
+        </tr>
+        <tr>
+          <td class="val-plain" style="font-weight: 600; background: #fafafa;">1 Year Plan</td>
+          <td class="val-plain" style="text-align: right;">₹ {{ fmtAmt(totalNum()) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain" style="font-weight: 600; background: #fafafa;">2 Year Plan</td>
+          <td class="val-plain" style="text-align: right;">₹ {{ fmtAmt(ltPremium(2)) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain" style="font-weight: 600; background: #fafafa;">3 Year Plan</td>
+          <td class="val-plain" style="text-align: right;">₹ {{ fmtAmt(ltPremium(3)) }}</td>
+        </tr>
+        <tr>
+          <td class="val-plain" style="font-weight: 600; background: #fafafa;">4 Year Plan</td>
+          <td class="val-plain" style="text-align: right;">
+            <span style="text-decoration: line-through; color: #999; margin-right: 8px;">₹ {{ fmtAmt(ltPremium(4, false)) }}</span>
+            <span style="font-weight: 700; margin-right: 8px;">₹ {{ fmtAmt(ltPremium(4)) }}</span>
+            <span style="color: #22c55e; font-weight: 700;">Save ₹{{ fmtAmt(ltSavings(4)) }}</span>
+          </td>
+        </tr>
+      </table>
 
       <!-- AGENT / PARTNER DETAILS -->
-      <div class="sec-block" *ngIf="agentName || fieldAgentName || generatedByName">
-        <div class="sec-bar">Agent / Partner Details</div>
-        <div class="sec-body grid-2">
-          <div class="d-item">
-            <span class="d-lbl">Agent Name</span>
-            <span class="d-val">{{ agentName || generatedByName || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Field Agent</span>
-            <span class="d-val">{{ fieldAgentName || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Location</span>
-            <span class="d-val">{{ f('location','LOCATION','city','rtoLocation') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Agent Code</span>
-            <span class="d-val">{{ agentCode() }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Contact</span>
-            <span class="d-val">{{ f('agentMobile','agent mobile','partner mobile') || f('ownerMobileNo','MOBILE') || '—' }}</span>
-          </div>
-          <div class="d-item">
-            <span class="d-lbl">Vertical</span>
-            <span class="d-val">{{ userRole || 'Insurance Partner' }}</span>
-          </div>
+      <div class="sec-hdr">Agent/Partner Details</div>
+      <table class="grid-table">
+        <tr>
+          <td class="lbl">Agent Name</td>
+          <td class="val">{{ agentName || generatedByName || '—' }}</td>
+          <td class="lbl">Location</td>
+          <td class="val">{{ f('location','LOCATION','city','rtoLocation') || '—' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Agent Code</td>
+          <td class="val">{{ agentCode() }}</td>
+          <td class="lbl">Mobile Number</td>
+          <td class="val">{{ f('agentMobile','agent mobile','partner mobile') || f('ownerMobileNo','MOBILE') || '—' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Vertical</td>
+          <td class="val" colspan="3">{{ userRole || 'Insurance Partner' }}</td>
+        </tr>
+      </table>
+
+      <!-- System notes / warnings -->
+      <div style="margin-top: 15px; font-size: 9px; color: #555; line-height: 1.5;">
+        <div>Correlation IDs: Quote - {{ correlationId() }}</div>
+        <div>Note: Premium has been calculated for {{ agentName || generatedByName || '—' }}, {{ userRole || 'Insurance Partner' }}</div>
+        <div style="color: #ff3b30; font-weight: 700; margin-top: 5px;">The displayed Quotation is valid subject to satisfactory break-in inspection, if applicable.</div>
+      </div>
+
+      <!-- FOOTER STRIP -->
+      <div class="footer-strip">
+        <div class="footer-col">
+          <div>🌐 www.icicilombard.com</div>
+          <div>💬 Chat with RIA on WhatsApp (+917738282666)</div>
+          <div>UIN: ICIHLIP23075 V032223 ADV/19248</div>
         </div>
-      </div>
-
-      <div class="disclaimer">
-        The displayed quotation is valid subject to satisfactory break-in inspection, if applicable.
-        This is a system-generated document and does not require a physical signature.
-      </div>
-
-      <div class="fine-print" *ngIf="correlationId()">
-        Correlation ID: {{ correlationId() }} | Generated via SmartInsure Platform
-      </div>
-
-      <!-- FOOTER -->
-      <div class="footer-bar">
-        <div class="footer-contact">
-          <span>🌐 insuradrive.vercel.app</span>
-          <span>💬 WhatsApp Support</span>
-          <span>✉ support&#64;smartinsure.in</span>
-          <span>📞 1800-266-4545 (Toll Free)</span>
-        </div>
-        <div class="footer-legal">
-          SmartInsure — Vehicle Data Management Platform.
-          UIN: IRDAN123RP0001V01200001 | CIN: U67200MH2000PLC129408
+        <div class="footer-col right">
+          <div>✉ customersupport&#64;icicilombard.com</div>
+          <div>📞 18002666 (toll free)</div>
+          <div>CIN: L67200MH2000PLC129408</div>
         </div>
       </div>
 
@@ -721,8 +600,8 @@ export class InsuranceDocComponent implements OnChanges {
   }
 
   agentCode(): string {
-    if (this.quoteId) return `SI-${this.quoteId.slice(-8)}`;
-    return this.systemId ? `SI-${this.systemId.slice(0, 8).toUpperCase()}` : '—';
+    if (this.quoteId) return `IM-${this.quoteId.slice(-7).toUpperCase()}`;
+    return this.systemId ? `IM-${this.systemId.slice(0, 7).toUpperCase()}` : '—';
   }
 
   correlationId(): string {

@@ -211,6 +211,10 @@ export class AuthService {
     return this.postAuth('/forgot-password', payload);
   }
 
+  verifyOtp(payload: any): Observable<any> {
+    return this.postAuth('/verify-otp', payload);
+  }
+
   resetPassword(payload: any): Observable<any> {
     return this.postAuth('/reset-password', payload);
   }

@@ -172,20 +172,31 @@ def _send_email_sync(to_email: str, subject: str, html_body: str, plain_body: st
         try:
             if use_ssl:
                 context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=30, context=context) as server:
+                with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=15, context=context) as server:
                     server.login(SMTP_USER, SMTP_PASS)
                     server.send_message(msg)
             else:
-                with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30) as server:
+                with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
                     server.ehlo()
                     server.starttls(context=ssl.create_default_context())
                     server.ehlo()
                     server.login(SMTP_USER, SMTP_PASS)
                     server.send_message(msg)
-            print(f"[email] OK → {to_email}: {subject}")
+            print(f"[email] SUCCESS → Sent email to {to_email}: {subject}")
             return True
+        except smtplib.SMTPAuthenticationError as auth_err:
+            print(f"[email] Attempt {attempt}/{max_retries} AUTHENTICATION FAILED → {to_email}")
+            print(f"[email] SMTP Code {auth_err.smtp_code}: {auth_err.smtp_error.decode('utf-8', errors='ignore') if isinstance(auth_err.smtp_error, bytes) else auth_err.smtp_error}")
+            print(f"[email] Hint: If using Gmail, make sure 2-Step Verification is enabled and you generated a 16-character App Password. Ensure no spaces are present in the password.")
+            if attempt == max_retries:
+                traceback.print_exc()
+        except smtplib.SMTPConnectError as conn_err:
+            print(f"[email] Attempt {attempt}/{max_retries} CONNECTION FAILED → Could not connect to {SMTP_SERVER}:{SMTP_PORT}")
+            print(f"[email] SMTP Code {conn_err.smtp_code}: {conn_err.smtp_error}")
+            if attempt == max_retries:
+                traceback.print_exc()
         except Exception as e:
-            print(f"[email] Attempt {attempt}/{max_retries} failed → {to_email}: {e}")
+            print(f"[email] Attempt {attempt}/{max_retries} FAILED → {to_email}: {type(e).__name__} - {e}")
             if attempt == max_retries:
                 traceback.print_exc()
     return False
