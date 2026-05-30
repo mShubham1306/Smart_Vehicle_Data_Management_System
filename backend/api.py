@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Query, Depends
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from database import (
     vehicles_collection, uploads_collection, schema_collection,
     sheets_collection, users_collection, learned_mappings_collection
@@ -25,6 +25,9 @@ from fastapi.responses import FileResponse
 # ── Lazy Redis client — prevents startup crash when REDIS_URL is not configured ──
 _redis_client: Optional[redis.Redis] = None
 
+# Thread-safe/async local fallback cache in memory with a 3-minute TTL (180s)
+_local_stats_cache: Dict[str, Tuple[datetime, dict]] = {}
+
 async def _get_redis() -> Optional[redis.Redis]:
     """Return a live Redis client, or None if Redis is not configured / unreachable."""
     global _redis_client
@@ -39,6 +42,18 @@ async def _get_redis() -> Optional[redis.Redis]:
             print(f"[redis] Connection failed (non-critical): {e}")
             _redis_client = None
     return _redis_client
+
+
+async def invalidate_dashboard_stats(uid: str, sheet: str):
+    """Invalidate local and Redis cache for dashboard stats."""
+    cache_key = f"dashboard_stats_{uid}_{sheet}"
+    _local_stats_cache.pop(cache_key, None)
+    _rc = await _get_redis()
+    if _rc:
+        try:
+            await _rc.delete(cache_key)
+        except Exception as e:
+            print(f"[cache] Redis invalidation failed (non-critical): {e}")
 
 router = APIRouter()
 
@@ -129,6 +144,7 @@ async def delete_sheet(name: str, current_user: Dict = Depends(require_admin)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f'Sheet "{name}" not found.')
     del_result = await vehicles_collection.delete_many({"user_id": uid, "sheet_name": name})
+    await invalidate_dashboard_stats(uid, name)
     return {"message": f'Sheet "{name}" and {del_result.deleted_count} records deleted.'}
 
 
@@ -344,6 +360,7 @@ async def create_or_update_vehicle(payload: Dict[str, Any], current_user: Dict =
     await vehicles_collection.update_one(
         {"user_id": uid, "vehicle_number": vehicle_number, "sheet_name": sheet_name},
         {"$set": record}, upsert=True)
+    await invalidate_dashboard_stats(uid, sheet_name)
     return {"message": "Record saved successfully", "vehicle_number": vehicle_number, "sheet_name": sheet_name}
 
 
@@ -371,13 +388,15 @@ async def delete_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None)
     uid = current_user["id"]
     v_num = vehicle_number.replace(" ", "").upper().strip()
     query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
+    sheet_name = clean(sheet or "default")
     if sheet:
-        query["sheet_name"] = clean(sheet)
+        query["sheet_name"] = sheet_name
 
     result = await vehicles_collection.delete_one(query)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"No record found for: {v_num}")
 
+    await invalidate_dashboard_stats(uid, sheet_name)
     return {"message": "Record deleted successfully.", "vehicle_number": v_num}
 
 
@@ -411,6 +430,12 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
                 return json.loads(cached)
         except Exception as e:
             print(f"[cache] Redis get failed (non-critical): {e}")
+
+    now = datetime.utcnow()
+    if cache_key in _local_stats_cache:
+        expire_time, cached_data = _local_stats_cache[cache_key]
+        if now < expire_time:
+            return cached_data
 
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
 
@@ -507,6 +532,9 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         "top_companies":        [{"name": k, "count": v} for k, v in top_companies],
         "fuel_types":           [{"name": k, "count": v} for k, v in top_fuels],
     }
+    # Store in local fallback cache
+    _local_stats_cache[cache_key] = (now + timedelta(seconds=180), stats_result)
+
     if _rc:
         try:
             await _rc.setex(cache_key, 300, json.dumps(stats_result))
@@ -731,6 +759,15 @@ async def migrate_fix_vehicle_numbers(current_user: Dict = Depends(require_admin
         else:
             unfixable += 1
 
+    _local_stats_cache.clear()
+    _rc = await _get_redis()
+    if _rc:
+        try:
+            async for k in _rc.scan_iter("dashboard_stats_*"):
+                await _rc.delete(k)
+        except Exception:
+            pass
+
     return {
         "message": f"Migration complete. Fixed={fixed}, Unfixable={unfixable}, Total scanned={total_scanned}",
         "fixed": fixed,
@@ -748,6 +785,14 @@ async def purge_bad_records(current_user: Dict = Depends(require_admin)):
         "user_id": uid,
         "vehicle_number": {"$in": ["", None]}
     })
+    _local_stats_cache.clear()
+    _rc = await _get_redis()
+    if _rc:
+        try:
+            async for k in _rc.scan_iter(f"dashboard_stats_{uid}_*"):
+                await _rc.delete(k)
+        except Exception:
+            pass
     return {
         "message": f"Deleted {result.deleted_count} records with empty vehicle_number. Re-upload your file to restore them.",
         "deleted": result.deleted_count,

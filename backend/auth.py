@@ -61,7 +61,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password[:72].encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(password[:72].encode("utf-8"), bcrypt.gensalt(rounds=10)).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -466,13 +466,15 @@ async def login(request: Request, payload: Dict[str, Any]):
                 )
             
             # Successful sign in -> sync password, firebase_uid, & email_verified in DB
+            set_fields = {
+                "email_verified": True,
+                "firebase_uid": fb_uid
+            }
+            if not user.get("password") or not verify_password(password, user.get("password", "")):
+                set_fields["password"] = hash_password(password)
             await users_collection.update_one(
                 {"_id": user["_id"]},
-                {"$set": {
-                    "email_verified": True,
-                    "firebase_uid": fb_uid,
-                    "password": hash_password(password)
-                }}
+                {"$set": set_fields}
             )
             user["email_verified"] = True
             
@@ -558,12 +560,14 @@ async def login(request: Request, payload: Dict[str, Any]):
         }}
     )
 
+    db_username = user.get("username", username)
+
     # Store session fingerprint
     await sessions_collection.update_one(
         {"user_id": user_id},
         {"$set": {
             "user_id":    user_id,
-            "username":   username,
+            "username":   db_username,
             "ip":         ip,
             "user_agent": device[:300],
             "created_at": datetime.utcnow(),
@@ -574,16 +578,16 @@ async def login(request: Request, payload: Dict[str, Any]):
 
     # Audit log
     await audit_log.log_action(
-        audit_log.LOGIN, user_id=user_id, username=username,
+        audit_log.LOGIN, user_id=user_id, username=db_username,
         ip=ip, user_agent=device, detail=f"Role: {role}"
     )
 
     # Send login alert (fire-and-forget)
     if user.get("email"):
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-        asyncio.create_task(send_login_alert(user["email"], username, ip, device, ts))
+        asyncio.create_task(send_login_alert(user["email"], db_username, ip, device, ts))
 
-    access_token = create_access_token(user_id, username, role, assigned_sheet, admin_id)
+    access_token = create_access_token(user_id, db_username, role, assigned_sheet, admin_id)
 
     return {
         "message":       "Login successful.",
@@ -592,7 +596,7 @@ async def login(request: Request, payload: Dict[str, Any]):
         "expires_in_hours": _get_token_expire_hours(role),
         "user": {
             "id":             user_id,
-            "username":       username,
+            "username":       db_username,
             "role":           role,
             "assigned_sheet": assigned_sheet,
             "admin_id":       admin_id,

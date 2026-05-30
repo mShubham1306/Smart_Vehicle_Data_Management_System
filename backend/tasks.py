@@ -109,6 +109,18 @@ def process_upload_task(self, filepath: str, filename: str, sheet_name: str, uid
         if os.path.exists(filepath):
             os.remove(filepath)
 
+        # Invalidate dashboard stats cache key in Redis
+        try:
+            import redis
+            _redis_url = os.getenv("REDIS_URL", "")
+            if _redis_url:
+                r = redis.from_url(_redis_url)
+                for sname in unique_sheets:
+                    cache_key = f"dashboard_stats_{uid}_{sname}"
+                    r.delete(cache_key)
+        except Exception as e:
+            print(f"[tasks] Redis invalidation failed (non-critical): {e}")
+
         return {"status": "completed"}
     
     except Exception as e:
