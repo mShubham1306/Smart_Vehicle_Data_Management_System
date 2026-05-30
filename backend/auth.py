@@ -227,11 +227,19 @@ async def register(payload: Dict[str, Any], request: Request):
 
     existing_user = await users_collection.find_one({"username": username})
     if existing_user:
-        raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
+        if existing_user.get("email_verified", True):
+            raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
+        else:
+            # Clean up the unverified registration in MongoDB to allow a fresh start
+            await users_collection.delete_one({"_id": existing_user["_id"]})
 
     existing_email = await users_collection.find_one({"email": email})
     if existing_email:
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        if existing_email.get("email_verified", True):
+            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        else:
+            # Clean up the unverified registration in MongoDB to allow a fresh start
+            await users_collection.delete_one({"_id": existing_email["_id"]})
 
     # ── Role Assignment ───────────────────────────────────────────────────── 
     # Public registration is restricted to creating Admin accounts only. Workers must be created by admins.
