@@ -560,28 +560,42 @@ async def login(request: Request, payload: Dict[str, Any]):
         )
         
         to_addr = user.get("email") or f"{user.get('username')}@smartinsure.local"
-        email_sent = await send_login_otp_email(to_addr, user.get("username"), login_otp, ip)
         
-        if not is_smtp_configured() or not email_sent:
+        # Only attempt sending if SMTP is fully configured
+        email_sent = False
+        if is_smtp_configured():
+            try:
+                email_sent = await send_login_otp_email(to_addr, user.get("username"), login_otp, ip)
+            except Exception as e:
+                print(f"[Login Security] SMTP connection/send error: {e}")
+                email_sent = False
+        
+        if email_sent:
+            await audit_log.log_action(
+                audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
+                username=user.get("username"), ip=ip, user_agent=device,
+                detail="Login 2FA OTP requested (new IP/device)"
+            )
+            return {
+                "otp_required": True,
+                "email": to_addr,
+                "email_sent": True,
+                "message": "A 6-digit verification code has been sent to your email to confirm this login."
+            }
+        else:
+            # SMTP is unconfigured or failed to send -> Gracefully BYPASS 2FA to prevent user lockout!
             print(f"\n=================================================="
-                  f"\n[LOCAL WORKER / DEV FALLBACK] LOGIN VERIFICATION OTP GENERATED"
-                  f"\nUser: {user.get('username')} ({to_addr})"
-                  f"\nLogin OTP: {login_otp}"
+                  f"\n[Login Security] SMTP offline/failed. Gracefully BYPASSING 2FA for: {user.get('username')}"
                   f"\n==================================================\n")
-                  
-        await audit_log.log_action(
-            audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
-            username=user.get("username"), ip=ip, user_agent=device,
-            detail="Login 2FA OTP requested (new IP/device)"
-        )
-        
-        msg = "A 6-digit verification code has been sent to your email to confirm this login." if email_sent else "SMTP is not configured or failed to send. Verification code has been printed to backend server console logs."
-        return {
-            "otp_required": True,
-            "email": to_addr,
-            "email_sent": email_sent,
-            "message": msg
-        }
+            # Skip 2FA OTP, clean up OTP fields, and allow direct login
+            await users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$unset": {
+                    "login_otp_h": "",
+                    "login_otp_exp": "",
+                    "login_otp_attempts": ""
+                }}
+            )
 
     # ── Successful login — reset failure count ────────────────────────────── 
     user_id        = str(user["_id"])
