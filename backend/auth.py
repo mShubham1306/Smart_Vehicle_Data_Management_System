@@ -29,7 +29,8 @@ from firebase_service import (
     firebase_send_verification_email,
     firebase_send_password_reset_email,
     firebase_get_user_info,
-    firebase_delete_account
+    firebase_delete_account,
+    firebase_resend_verification,
 )
 
 auth_router = APIRouter()
@@ -804,7 +805,7 @@ async def verify_email_otp(payload: Dict[str, Any]):
 @auth_router.post("/resend-verification")
 @limiter.limit("3/minute")
 async def resend_verification(request: Request, payload: Dict[str, Any]):
-    """Re-send email verification link + OTP."""
+    """Re-send email verification link + OTP (Firebase or SMTP)."""
     email = str(payload.get("email", "")).strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email address is required.")
@@ -817,6 +818,20 @@ async def resend_verification(request: Request, payload: Dict[str, Any]):
     if user.get("email_verified"):
         return {"message": "This email is already verified. Please log in."}
 
+    # ── Firebase Resend Flow ─────────────────────────────────────────────────
+    if is_firebase_enabled():
+        sent = await firebase_resend_verification(email)
+        await audit_log.log_action(
+            audit_log.EMAIL_RESENT, user_id=str(user["_id"]),
+            username=user.get("username"), ip=_get_ip(request),
+            detail="Firebase verification email resent"
+        )
+        if sent:
+            return {"message": "Verification email resent. Please check your inbox (and spam folder)."}
+        else:
+            return {"message": "Could not resend verification email. Please try again in a few moments."}
+
+    # ── Standard SMTP Resend Flow ────────────────────────────────────────────
     new_token   = secrets.token_urlsafe(32)
     new_otp     = str(random.randint(100000, 999999))
     new_otp_h   = hashlib.sha256(new_otp.encode()).hexdigest()

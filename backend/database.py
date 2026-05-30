@@ -6,10 +6,14 @@ load_dotenv()
 
 # OPTIMIZED CONNECTION POOLING FOR SCALING
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-if "?" not in MONGO_URI:
-    # Safe pool sizes for Atlas M10 (1500 max connections shared across all workers)
-    MONGO_URI += "?maxPoolSize=50&minPoolSize=5&maxIdleTimeMS=45000&serverSelectionTimeoutMS=10000&waitQueueTimeoutMS=10000"
-    
+
+# Append pool settings — use & if ? already present (e.g. ?appName=...), else use ?
+_pool_params = "maxPoolSize=50&minPoolSize=5&maxIdleTimeMS=45000&serverSelectionTimeoutMS=10000&waitQueueTimeoutMS=10000"
+if "?" in MONGO_URI:
+    MONGO_URI += "&" + _pool_params
+else:
+    MONGO_URI += "?" + _pool_params
+
 client = AsyncIOMotorClient(MONGO_URI)
 database = client.vehicle_insurance
 

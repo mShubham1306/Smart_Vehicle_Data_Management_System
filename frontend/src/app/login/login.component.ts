@@ -649,7 +649,11 @@ export class LoginComponent implements OnInit, OnDestroy {
           setTimeout(() => this.switchMode('login'), 1500);
           return;
         }
-        this.success = 'We sent a new code to your email. Check your inbox and spam folder.';
+        if (this.emailProvider === 'firebase') {
+          this.success = 'A verification/reset link has been sent to your email. Check your inbox and spam folder, then click the link to verify your account.';
+        } else {
+          this.success = 'We sent a new code to your email. Check your inbox and spam folder.';
+        }
         this.resendCooldown = 60;
         this._resendInterval = setInterval(() => {
           this.resendCooldown--;
