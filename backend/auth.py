@@ -567,10 +567,12 @@ async def login(request: Request, payload: Dict[str, Any]):
             detail="Login 2FA OTP requested (new IP/device)"
         )
         
+        msg = "A 6-digit verification code has been sent to your email to confirm this login." if email_sent else "SMTP is not configured or failed to send. Verification code has been printed to backend server console logs."
         return {
             "otp_required": True,
             "email": to_addr,
-            "message": "A 6-digit verification code has been sent to your email to confirm this login."
+            "email_sent": email_sent,
+            "message": msg
         }
 
     # ── Successful login — reset failure count ────────────────────────────── 

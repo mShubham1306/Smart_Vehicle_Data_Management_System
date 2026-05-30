@@ -440,7 +440,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.email = res.email;
           this.otp = '';
           this.mode = 'verify_email';
-          this.success = 'A verification code has been sent to your email to confirm this login.';
+          this.success = res.message || 'A verification code has been sent to your email to confirm this login.';
           this.error = '';
           return;
         }
