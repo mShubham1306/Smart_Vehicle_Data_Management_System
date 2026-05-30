@@ -28,7 +28,8 @@ from firebase_service import (
     firebase_sign_in,
     firebase_send_verification_email,
     firebase_send_password_reset_email,
-    firebase_get_user_info
+    firebase_get_user_info,
+    firebase_delete_account
 )
 
 auth_router = APIRouter()
@@ -428,6 +429,20 @@ async def login(request: Request, payload: Dict[str, Any]):
             )
 
     # ── Credential check ─────────────────────────────────────────────────── 
+    if not user:
+        if is_firebase_enabled() and "@" in username:
+            try:
+                # Attempt to authenticate against Firebase
+                fb_res = await firebase_sign_in(username, password)
+                id_token = fb_res.get("idToken")
+                # Since auth succeeded but they are NOT in MongoDB Atlas, they were deleted by admin.
+                # Delete the orphaned account from Firebase Auth!
+                await firebase_delete_account(id_token)
+                print(f"[Firebase Sync] Orphaned user {username} automatically deleted from Firebase.")
+            except Exception:
+                pass
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
     if is_firebase_enabled():
         try:
             fb_res = await firebase_sign_in(user.get("email"), password)

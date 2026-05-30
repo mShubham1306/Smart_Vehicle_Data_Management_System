@@ -128,3 +128,18 @@ async def firebase_get_user_info(id_token: str) -> dict:
         except Exception as exc:
             print(f"[Firebase Get User Info Error] {exc}")
             return {}
+
+async def firebase_delete_account(id_token: str) -> bool:
+    """Deletes the authenticated user account from Firebase Auth."""
+    api_key = get_firebase_api_key()
+    if not api_key:
+        return False
+    
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:delete?key={api_key}"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            response = await client.post(url, json={"idToken": id_token})
+            return response.status_code == 200
+        except Exception as exc:
+            print(f"[Firebase Delete Account Error] {exc}")
+            return False
