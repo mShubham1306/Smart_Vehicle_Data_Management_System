@@ -145,14 +145,15 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
             <ng-container *ngIf="mode === 'verify_email'">
               <div class="info">
                 <p style="color:#60a5fa;font-size:0.82rem;font-weight:700;margin:0 0 6px">📧 Check Your Inbox</p>
-                <p style="color:#888;font-size:0.78rem;margin:0">We sent a verification code to <strong style="color:#f0f0f0">{{ email }}</strong>. Enter the 6-digit code below or click the link in the email.</p>
+                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="emailProvider !== 'firebase'">We sent a verification code to <strong style="color:#f0f0f0">{{ email }}</strong>. Enter the 6-digit code below or click the link in the email.</p>
+                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="emailProvider === 'firebase'">We sent a secure verification link to <strong style="color:#f0f0f0">{{ email }}</strong>. Please check your inbox (and spam folder) and click the link to verify your account.</p>
               </div>
-              <div class="field">
+              <div class="field" *ngIf="emailProvider !== 'firebase'">
                 <label>6-Digit Verification Code</label>
                 <input class="otp-input" type="text" [(ngModel)]="otp" maxlength="6" placeholder="000000" autocomplete="one-time-code">
               </div>
-              <button class="btn-submit btn-admin" [disabled]="loading || otp.length !== 6" (click)="submitVerifyEmail()">
-                <span *ngIf="!loading">✓ Verify Email</span>
+              <button class="btn-submit btn-admin" [disabled]="loading || (emailProvider !== 'firebase' && otp.length !== 6)" (click)="emailProvider === 'firebase' ? switchMode('login') : submitVerifyEmail()">
+                <span *ngIf="!loading">{{ emailProvider === 'firebase' ? '→ Proceed to Sign In' : '✓ Verify Email' }}</span>
                 <span *ngIf="loading" style="display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin"></span>Verifying…</span>
               </button>
               <button class="btn-secondary" [disabled]="resendCooldown > 0" (click)="resendVerification()">
@@ -288,6 +289,7 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
 })
 export class LoginComponent implements OnInit, OnDestroy {
   mode: Mode = 'login';
+  emailProvider: 'firebase' | 'smtp' | 'none' = 'smtp';
   username = '';
   email = '';
   password = '';
@@ -322,6 +324,15 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     this.authService.warmUpApi().subscribe({ error: () => {} });
+
+    this.authService.getEmailStatus().subscribe({
+      next: (status: any) => {
+        this.emailProvider = status?.email_provider ?? 'smtp';
+      },
+      error: () => {
+        this.emailProvider = 'smtp';
+      }
+    });
 
     this.route.queryParams.subscribe(params => {
       const token = params['token'];
@@ -485,10 +496,15 @@ export class LoginComponent implements OnInit, OnDestroy {
       this.authService.forgotPassword({ email }).subscribe({
         next: () => {
           this.loading = false;
-          this.success = 'If this email is registered, a reset code was sent. Check inbox and spam.';
-          this.mode = 'verify_otp';
-          this.otp = ''; // Clear any stale OTP input
-          this.startResendCooldown();
+          if (this.emailProvider === 'firebase') {
+            this.success = 'A secure password reset link has been sent to your email. Follow the instructions in the email, then return here and Sign In.';
+            this.mode = 'login';
+          } else {
+            this.success = 'If this email is registered, a reset code was sent. Check inbox and spam.';
+            this.mode = 'verify_otp';
+            this.otp = ''; // Clear any stale OTP input
+            this.startResendCooldown();
+          }
         },
         error: (err: any) => {
           if ((err?.status === 0 || err?.status >= 500) && attempt < 2) {

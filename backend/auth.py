@@ -22,6 +22,14 @@ from email_service import (
     is_smtp_configured, smtp_status, test_smtp_connection, get_frontend_url,
 )
 import asyncio
+from firebase_service import (
+    is_firebase_enabled,
+    firebase_sign_up,
+    firebase_sign_in,
+    firebase_send_verification_email,
+    firebase_send_password_reset_email,
+    firebase_get_user_info
+)
 
 auth_router = APIRouter()
 from limiter import limiter
@@ -233,15 +241,76 @@ async def register(payload: Dict[str, Any], request: Request):
     else:
         role = "worker"
 
-    # ── Email Verification Token ───────────────────────────────────────────── 
+    # First admin is auto-verified (bootstrap); others require verification
+    is_first_user = (total_users == 0)
+
+    # ── Firebase Auth Flow ───────────────────────────────────────────────────
+    if is_firebase_enabled():
+        fb_user = await firebase_sign_up(email, password)
+        fb_uid = fb_user.get("localId")
+        fb_id_token = fb_user.get("idToken")
+
+        hashed_pw = hash_password(password)
+        doc = {
+            "username":                  username,
+            "email":                     email,
+            "password":                  hashed_pw,
+            "role":                      role,
+            "assigned_sheet":            "default",
+            "created_at":                datetime.utcnow(),
+            "email_verified":            is_first_user,
+            "firebase_uid":              fb_uid,
+            "failed_attempts":           0,
+            "locked_until":              None,
+            "last_login_at":             None,
+            "last_login_ip":             None,
+            "password_changed_at":       datetime.utcnow(),
+        }
+        if admin_id_field:
+            doc["admin_id"] = admin_id_field
+
+        result = await users_collection.insert_one(doc)
+        user_id = str(result.inserted_id)
+
+        # Audit Log
+        await audit_log.log_action(
+            audit_log.REGISTER, user_id=user_id, username=username,
+            ip=_get_ip(request), user_agent=_get_device(request),
+            detail=f"Firebase Role: {role}, email_verified: {is_first_user}"
+        )
+
+        email_verified = is_first_user
+        needs_email_verify = not is_first_user
+
+        if not is_first_user:
+            await firebase_send_verification_email(fb_id_token)
+        else:
+            asyncio.create_task(send_welcome_email(email, username, role))
+
+        token = None
+        user_resp = {
+            "id": user_id, "username": username, "role": role,
+            "assigned_sheet": "default", "admin_id": admin_id_field,
+            "email_verified": email_verified,
+        }
+
+        if email_verified:
+            token = create_access_token(user_id, username, role, "default", admin_id_field)
+
+        return {
+            "message": "Account created successfully." if email_verified
+                       else "Account created! Please check your email for the verification link.",
+            "email_verification_required": needs_email_verify,
+            "token": token,
+            "user": user_resp,
+        }
+
+    # ── Standard SMTP Flow ───────────────────────────────────────────────────
     verify_token = secrets.token_urlsafe(32)
     verify_otp   = str(random.randint(100000, 999999))
     verify_otp_h = hashlib.sha256(verify_otp.encode()).hexdigest()
     verify_exp   = datetime.utcnow() + timedelta(hours=VERIFY_TOKEN_EXPIRE_H)
     verify_url   = f"{get_frontend_url()}/verify-email?token={verify_token}"
-
-    # First admin is auto-verified (bootstrap); others require verification
-    is_first_user = (total_users == 0)
 
     hashed_pw = hash_password(password)
     doc = {
@@ -359,14 +428,42 @@ async def login(request: Request, payload: Dict[str, Any]):
             )
 
     # ── Credential check ─────────────────────────────────────────────────── 
-    if not user or not verify_password(password, user.get("password", "")):
-        if user:
+    if is_firebase_enabled():
+        try:
+            fb_res = await firebase_sign_in(user.get("email"), password)
+            fb_uid = fb_res.get("localId")
+            id_token = fb_res.get("idToken")
+            
+            # Lookup user info to check email verification
+            fb_user_info = await firebase_get_user_info(id_token)
+            email_verified = fb_user_info.get("emailVerified", False) or user.get("role") == "worker"
+            
+            if not email_verified:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Email not verified. Please check your inbox and verify your email before logging in.",
+                    headers={"X-Reason": "EMAIL_NOT_VERIFIED"}
+                )
+            
+            # Successful sign in -> sync password, firebase_uid, & email_verified in DB
+            await users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$set": {
+                    "email_verified": True,
+                    "firebase_uid": fb_uid,
+                    "password": hash_password(password)
+                }}
+            )
+            user["email_verified"] = True
+            
+        except HTTPException as he:
+            if he.status_code == 403:
+                raise he
             attempts = user.get("failed_attempts", 0) + 1
             update = {"$set": {"failed_attempts": attempts}}
             if attempts >= MAX_FAILED_ATTEMPTS:
                 lock_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
                 update["$set"]["locked_until"] = lock_until
-                # Send lock alert
                 if user.get("email"):
                     unlock_str = lock_until.strftime("%H:%M UTC")
                     asyncio.create_task(
@@ -383,15 +480,39 @@ async def login(request: Request, payload: Dict[str, Any]):
                 username=username, ip=ip, user_agent=device,
                 detail=f"Attempt {attempts}/{MAX_FAILED_ATTEMPTS}"
             )
-        raise HTTPException(status_code=401, detail="Invalid username or password.")
+            raise he
+    else:
+        # Standard Credential check
+        if not verify_password(password, user.get("password", "")):
+            attempts = user.get("failed_attempts", 0) + 1
+            update = {"$set": {"failed_attempts": attempts}}
+            if attempts >= MAX_FAILED_ATTEMPTS:
+                lock_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+                update["$set"]["locked_until"] = lock_until
+                if user.get("email"):
+                    unlock_str = lock_until.strftime("%H:%M UTC")
+                    asyncio.create_task(
+                        send_account_locked_email(user["email"], username, unlock_str, ip)
+                    )
+                await audit_log.log_action(
+                    audit_log.ACCOUNT_LOCKED, user_id=str(user["_id"]),
+                    username=username, ip=ip, user_agent=device,
+                    detail=f"Locked after {attempts} failed attempts."
+                )
+            await users_collection.update_one({"_id": user["_id"]}, update)
+            await audit_log.log_action(
+                audit_log.LOGIN_FAILED, user_id=str(user["_id"]),
+                username=username, ip=ip, user_agent=device,
+                detail=f"Attempt {attempts}/{MAX_FAILED_ATTEMPTS}"
+            )
+            raise HTTPException(status_code=401, detail="Invalid username or password.")
 
-    # ── Email Verification Check ──────────────────────────────────────────── 
-    if not user.get("email_verified", True):
-        raise HTTPException(
-            status_code=403,
-            detail="Email not verified. Please check your inbox and verify your email before logging in.",
-            headers={"X-Reason": "EMAIL_NOT_VERIFIED"}
-        )
+        if not user.get("email_verified", True):
+            raise HTTPException(
+                status_code=403,
+                detail="Email not verified. Please check your inbox and verify your email before logging in.",
+                headers={"X-Reason": "EMAIL_NOT_VERIFIED"}
+            )
 
     # ── Successful login — reset failure count ────────────────────────────── 
     user_id        = str(user["_id"])
@@ -567,9 +688,11 @@ async def me(current_user: Dict[str, Any] = Depends(get_current_user)):
 @auth_router.get("/email-status")
 async def email_status():
     """Public: whether outbound email is configured (no secrets)."""
+    firebase_configured = is_firebase_enabled()
     status = smtp_status()
     return {
-        "email_enabled": status["configured"],
+        "email_enabled": firebase_configured or status["configured"],
+        "email_provider": "firebase" if firebase_configured else ("smtp" if status["configured"] else "none"),
         "login_url": f"{get_frontend_url()}/login",
     }
 
@@ -756,6 +879,27 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
             )
 
         ip  = _get_ip(request)
+
+        # ── Firebase Flow ────────────────────────────────────────────────────
+        if is_firebase_enabled():
+            to_addr = user.get("email") or email
+            await firebase_send_password_reset_email(to_addr)
+            await users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"reset_otp_requested_at": datetime.utcnow()}}
+            )
+            await audit_log.log_action(
+                audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
+                username=user.get("username", email), ip=ip, user_agent=_get_device(request),
+                detail="Firebase password reset link emailed",
+            )
+            return {
+                "success": True,
+                "message": "If an account with this email exists, a reset link has been sent.",
+                "cooldown_seconds": 60
+            }
+
+        # ── Standard Flow ────────────────────────────────────────────────────
         # Secure 6-digit OTP generation using secrets
         otp = f"{secrets.SystemRandom().randint(0, 999999):06d}"
         otp_hash = hashlib.sha256(otp.encode()).hexdigest()

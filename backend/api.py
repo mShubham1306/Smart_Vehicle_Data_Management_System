@@ -559,6 +559,7 @@ async def list_users(current_user: Dict = Depends(require_admin)):
 async def create_worker(payload: Dict[str, Any], current_user: Dict = Depends(require_admin)):
     """Admin creates a worker — automatically linked to this admin's data space."""
     from auth import hash_password
+    from firebase_service import is_firebase_enabled, firebase_sign_up
     admin_id = current_user["id"]
     username = str(payload.get("username", "")).strip().lower()
     password = str(payload.get("password", "")).strip()
@@ -571,14 +572,28 @@ async def create_worker(payload: Dict[str, Any], current_user: Dict = Depends(re
     if await users_collection.find_one({"username": username}):
         raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
 
-    result = await users_collection.insert_one({
+    fb_uid = None
+    email_val = None
+    if is_firebase_enabled():
+        email_val = f"{username}@smartinsure.local"
+        fb_user = await firebase_sign_up(email_val, password)
+        fb_uid = fb_user.get("localId")
+
+    doc = {
         "username": username,
         "password": hash_password(password),
         "role": "worker",
         "assigned_sheet": "default",
         "admin_id": admin_id,
         "created_at": datetime.utcnow(),
-    })
+        "email_verified": True, # Workers are auto-verified since they are created by admins
+    }
+    if fb_uid:
+        doc["firebase_uid"] = fb_uid
+    if email_val:
+        doc["email"] = email_val
+
+    result = await users_collection.insert_one(doc)
     return {"message": f'Worker "{username}" created.', "id": str(result.inserted_id), "username": username}
 
 
