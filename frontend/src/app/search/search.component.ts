@@ -188,8 +188,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.sub = this.authService.currentUser$.subscribe(user => {
       this.isAdmin = user?.role === 'admin';
       this.userRole = user?.role === 'admin' ? 'Administrator' : 'Agent / Partner';
-      // Auto-fill agent name and generated_by from the logged-in user's stored username
-      const name = user?.username || '';
+      // Auto-fill agent name and generated_by from the logged-in user's stored name or username
+      const name = user?.name || user?.username || '';
       this.tracking.generated_by_name = name;
       // Only pre-fill agent_name if it hasn't been manually changed by the user
       if (!this.tracking.agent_name) {

@@ -16,6 +16,7 @@ export const routes: Routes = [
       { path: 'upload',    canActivate: [adminGuard], loadComponent: () => import('./upload/upload.component').then(m => m.UploadComponent) },
       { path: 'search',    loadComponent: () => import('./search/search.component').then(m => m.SearchComponent) },
       { path: 'entry',     loadComponent: () => import('./entry/entry.component').then(m => m.EntryComponent) },
+      { path: 'docs',      loadComponent: () => import('./doc-process/doc-process.component').then(m => m.DocProcessComponent) },
       { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./admin/admin.component').then(m => m.AdminComponent) },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]

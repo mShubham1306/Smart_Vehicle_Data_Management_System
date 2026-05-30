@@ -94,7 +94,8 @@ def _get_token_expire_hours(role: str) -> int:
 
 def create_access_token(
     user_id: str, username: str, role: str = "worker",
-    assigned_sheet: Optional[str] = None, admin_id: Optional[str] = None
+    assigned_sheet: Optional[str] = None, admin_id: Optional[str] = None,
+    name: Optional[str] = None
 ) -> str:
     expire_h = _get_token_expire_hours(role)
     expire = datetime.utcnow() + timedelta(hours=expire_h)
@@ -105,6 +106,7 @@ def create_access_token(
         "role":           role,
         "assigned_sheet": assigned_sheet,
         "admin_id":       admin_id,
+        "name":           name,
         "exp":            expire,
         "iat":            datetime.utcnow(),
         "jti":            jti,
@@ -182,6 +184,7 @@ async def get_current_user(
     return {
         "id":             user_id,
         "username":       payload.get("username", ""),
+        "name":           payload.get("name", ""),
         "role":           role,
         "assigned_sheet": payload.get("assigned_sheet", None),
         "data_owner_id":  admin_id if (role == "worker" and admin_id) else user_id,
@@ -207,6 +210,7 @@ async def register(payload: Dict[str, Any], request: Request):
     username = str(payload.get("username", "")).strip().lower()
     password = str(payload.get("password", "")).strip()
     email    = str(payload.get("email", "")).strip().lower()
+    name     = str(payload.get("name", "")).strip()
 
     # ── Validation ───────────────────────────────────────────────────────────
     if not username or len(username) < 3:
@@ -260,6 +264,7 @@ async def register(payload: Dict[str, Any], request: Request):
         doc = {
             "username":                  username,
             "email":                     email,
+            "name":                      name,
             "password":                  hashed_pw,
             "role":                      role,
             "assigned_sheet":            "default",
@@ -322,6 +327,7 @@ async def register(payload: Dict[str, Any], request: Request):
     doc = {
         "username":                  username,
         "email":                     email,
+        "name":                      name,
         "password":                  hashed_pw,
         "role":                      role,
         "assigned_sheet":            "default",
@@ -387,10 +393,11 @@ async def register(payload: Dict[str, Any], request: Request):
         "id": user_id, "username": username, "role": role,
         "assigned_sheet": "default", "admin_id": admin_id_field,
         "email_verified": email_verified,
+        "name": name,
     }
 
     if email_verified:
-        token = create_access_token(user_id, username, role, "default", admin_id_field)
+        token = create_access_token(user_id, username, role, "default", admin_id_field, name=name)
 
     return {
         "message": "Account created successfully." if email_verified
@@ -587,7 +594,7 @@ async def login(request: Request, payload: Dict[str, Any]):
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         asyncio.create_task(send_login_alert(user["email"], db_username, ip, device, ts))
 
-    access_token = create_access_token(user_id, db_username, role, assigned_sheet, admin_id)
+    access_token = create_access_token(user_id, db_username, role, assigned_sheet, admin_id, name=user.get("name"))
 
     return {
         "message":       "Login successful.",
@@ -602,6 +609,7 @@ async def login(request: Request, payload: Dict[str, Any]):
             "admin_id":       admin_id,
             "email_verified": user.get("email_verified", True),
             "last_login_at":  user.get("last_login_at"),
+            "name":           user.get("name"),
         },
     }
 
@@ -710,7 +718,7 @@ async def verify_login_otp(request: Request, payload: Dict[str, Any]):
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         asyncio.create_task(send_login_alert(user["email"], user["username"], ip, device, ts))
 
-    access_token = create_access_token(user_id, user["username"], role, assigned_sheet, admin_id)
+    access_token = create_access_token(user_id, user["username"], role, assigned_sheet, admin_id, name=user.get("name"))
 
     return {
         "message":       "Login successful.",
@@ -725,6 +733,7 @@ async def verify_login_otp(request: Request, payload: Dict[str, Any]):
             "admin_id":       admin_id,
             "email_verified": user.get("email_verified", True),
             "last_login_at":  user.get("last_login_at"),
+            "name":           user.get("name"),
         },
     }
 
@@ -807,7 +816,7 @@ async def refresh_token(request: Request, payload: Dict[str, Any]):
     role          = user.get("role", "worker")
     assigned_sheet = user.get("assigned_sheet", "default")
     admin_id      = user.get("admin_id")
-    new_access    = create_access_token(str(user["_id"]), user["username"], role, assigned_sheet, admin_id)
+    new_access    = create_access_token(str(user["_id"]), user["username"], role, assigned_sheet, admin_id, name=user.get("name"))
 
     await audit_log.log_action(
         audit_log.TOKEN_REFRESHED, user_id=str(user["_id"]),

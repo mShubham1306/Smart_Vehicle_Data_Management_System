@@ -97,7 +97,7 @@ import { Subscription } from 'rxjs';
               {{ getInitial() }}
             </div>
             <div class="overflow-hidden">
-              <p class="text-xs font-bold text-textLight truncate">{{ user?.username || 'User' }}</p>
+              <p class="text-xs font-bold text-textLight truncate">{{ user?.name || user?.username || 'User' }}</p>
               <p class="text-[10px] text-textGray truncate">{{ isAdmin ? 'Administrator' : 'User' }}</p>
             </div>
           </div>
@@ -161,13 +161,15 @@ export class LayoutComponent implements OnInit, OnDestroy {
     { link: '/app/upload',    icon: '📂', label: 'Upload Data' },
     { link: '/app/search',    icon: '🔍', label: 'Search Vehicle' },
     { link: '/app/entry',     icon: '✏️', label: 'Data Entry' },
+    { link: '/app/docs',      icon: '📄', label: 'Doc Processing' },
     { link: '/app/admin',     icon: '👥', label: 'Manage Users' },
   ];
 
-  // Workers can ONLY access Search and Data Entry
+  // Workers can access Search, Data Entry and Doc Processing
   workerNavItems = [
     { link: '/app/search', icon: '🔍', label: 'Search Vehicle' },
     { link: '/app/entry',  icon: '✏️', label: 'Data Entry' },
+    { link: '/app/docs',   icon: '📄', label: 'Doc Processing' },
   ];
 
   private meta: Record<string, {title:string;sub:string}> = {
@@ -175,6 +177,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     '/app/search':    { title:'Search Vehicle',  sub:'Lookup by plate number & view insurance document' },
     '/app/upload':    { title:'Upload Data',     sub:'Import Excel or CSV files' },
     '/app/entry':     { title:'Data Entry',      sub:'Add or update vehicle records' },
+    '/app/docs':      { title:'Doc Processing', sub:'Upload & extract insurance documents' },
     '/app/admin':     { title:'Manage Users',  sub:'Create and manage user accounts' },
   };
 
@@ -187,7 +190,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
       // Workers start at entry
       if (u && !this.isAdmin) {
         const path = window.location.pathname;
-        const allowedForWorker = ['/app/search', '/app/entry'];
+        const allowedForWorker = ['/app/search', '/app/entry', '/app/docs'];
         if (!allowedForWorker.some(p => path.startsWith(p))) {
           this.router.navigate(['/app/entry']);
         }
@@ -198,7 +201,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
   ngOnDestroy() { this.sub.unsubscribe(); }
   goHome() { this.router.navigate(['/']); }
   logout() { this.authService.logout(); }
-  getInitial() { return this.user?.username?.charAt(0).toUpperCase() || 'U'; }
+  getInitial() {
+    const name = this.user?.name || this.user?.username || 'U';
+    return name.charAt(0).toUpperCase();
+  }
   isActive(link: string) { return window.location.pathname.startsWith(link); }
   getTitle() { return this.meta[window.location.pathname]?.title ?? 'SmartInsure'; }
   getSub()   { return this.meta[window.location.pathname]?.sub   ?? ''; }

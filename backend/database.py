@@ -34,6 +34,8 @@ sessions_collection          = database.get_collection("sessions")
 revoked_tokens_collection    = database.get_collection("revoked_tokens")
 email_queue_collection       = database.get_collection("email_queue")
 pdf_documents_collection     = database.get_collection("pdf_documents")
+doc_uploads_collection       = database.get_collection("doc_uploads")
+
 
 
 async def init_db():
@@ -89,6 +91,13 @@ async def init_db():
     await pdf_documents_collection.create_index("admin_id")
     await pdf_documents_collection.create_index("vehicle_number")
     await pdf_documents_collection.create_index([("generated_at", -1)])
+
+    # doc_uploads collection indexes
+    await doc_uploads_collection.create_index("uploaded_by_user_id")
+    await doc_uploads_collection.create_index("ocr_status")
+    await doc_uploads_collection.create_index([("upload_time", -1)])
+    await doc_uploads_collection.create_index([("uploaded_by_user_id", 1), ("upload_time", -1)])
+
 
     # ── Security Collections Indexes ───────────────────────────────────────── 
     # Audit logs — query by user and time

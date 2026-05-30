@@ -1,5 +1,13 @@
 FROM python:3.10-slim
 
+# Install system dependencies for OCR
+RUN apt-get update && apt-get install -y \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    poppler-utils \
+    libglib2.0-0 \
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for security
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 

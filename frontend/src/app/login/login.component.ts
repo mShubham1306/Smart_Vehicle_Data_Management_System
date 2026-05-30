@@ -175,6 +175,11 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
                 <label>Email Address</label>
                 <input type="email" [(ngModel)]="email" placeholder="Enter email" autocomplete="email">
               </div>
+              <!-- Full Name (register only) -->
+              <div class="field" *ngIf="mode === 'register'">
+                <label>Full Name</label>
+                <input type="text" [(ngModel)]="fullName" placeholder="Enter your full name" autocomplete="name">
+              </div>
               <!-- Password -->
               <div class="field">
                 <label>Password</label>
@@ -292,6 +297,7 @@ export class LoginComponent implements OnInit, OnDestroy {
   isLogin2FA = false;
   username = '';
   email = '';
+  fullName = '';
   password = '';
   otp = '';
   error = '';
@@ -417,7 +423,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     if (this.mode === 'forgot_password') return !this.email;
     if (this.mode === 'reset_password') return !this.otp || !this.password;
     if (this.mode === 'login') return !this.username || !this.password;
-    if (this.mode === 'register') return !this.username || !this.email || !this.password || !!this.usernameError;
+    if (this.mode === 'register') return !this.username || !this.email || !this.fullName || !this.password || !!this.usernameError;
     return true;
   }
 
@@ -435,7 +441,10 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     const basePayload: any = { username: this.username.trim().toLowerCase(), password: this.password };
-    if (this.mode === 'register') basePayload.email = this.email.trim().toLowerCase();
+    if (this.mode === 'register') {
+      basePayload.email = this.email.trim().toLowerCase();
+      basePayload.name = this.fullName.trim();
+    }
     if (this.mode === 'register' && this.isAdminLogin) basePayload.role = 'admin';
 
     const req = this.mode === 'login'

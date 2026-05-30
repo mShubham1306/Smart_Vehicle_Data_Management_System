@@ -20,3 +20,6 @@ email-validator
 httpx
 boto3
 botocore
+pdfplumber
+pytesseract
+Pillow

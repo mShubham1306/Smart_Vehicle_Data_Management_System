@@ -18,6 +18,7 @@ export interface User {
   role: 'admin' | 'worker';
   assigned_sheet?: string;
   email_verified?: boolean;
+  name?: string;
 }
 
 @Injectable({ providedIn: 'root' })
