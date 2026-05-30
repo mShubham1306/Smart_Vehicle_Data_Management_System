@@ -42,6 +42,9 @@ services:
       # Do not set REDIS_URL unless you run Redis — empty avoids rate-limit crashes
       - key: REDIS_URL
         value: ""
+      # Firebase Auth — free tier, for email verification and password reset OTP
+      - key: FIREBASE_API_KEY
+        sync: false
       # ── AWS S3 for PDF Storage ─────────────────────────────────
       - key: AWS_ACCESS_KEY_ID
         sync: false

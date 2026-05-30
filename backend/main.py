@@ -175,8 +175,14 @@ async def startup_event():
     from limiter import _redis_url
     print(f"[startup] SMTP configured: {is_smtp_configured()} — {smtp_status()}")
     print(f"[startup] REDIS_URL set: {bool(_redis_url)}")
-    await init_db()
-    await migrate_user_roles()
+    try:
+        await init_db()
+    except Exception as e:
+        print(f"[startup] init_db WARNING (non-fatal): {e}")
+    try:
+        await migrate_user_roles()
+    except Exception as e:
+        print(f"[startup] migrate_user_roles WARNING (non-fatal): {e}")
 
 
 @app.exception_handler(Exception)
