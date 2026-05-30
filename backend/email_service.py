@@ -276,3 +276,31 @@ async def send_login_otp_email(to_email: str, username: str, otp: str, ip: str =
     html, plain = _template_login_otp(username, otp, ip)
     return _send_email_sync(to_email, f"Login Verification Code — {APP_NAME}", html, plain)
 
+
+def _template_link_reset(username: str, reset_url: str, ip: str = "Unknown") -> tuple[str, str]:
+    plain = (
+        f"Hi {username},\n\n"
+        f"Please reset your password by opening the following link:\n{reset_url}\n\n"
+        f"This link is valid for 2 hours.\n"
+        f"If you did not request this, please ignore this email.\n"
+    )
+    html = _base_template(
+        f"Reset Your Password — {APP_NAME}",
+        f"""
+      <h2 style="color:#f0f0f0;">Reset Your Password</h2>
+      <p style="color:#888;">Hi <strong style="color:#fff;">{username}</strong>, click the button below to securely choose a new password for your account:</p>
+      <p style="text-align:center;margin:24px 0;">
+        <a href="{reset_url}" style="background:#ef4444;color:#fff;padding:14px 28px;border-radius:12px;text-decoration:none;font-weight:800;">Reset Password</a>
+      </p>
+      <p style="color:#555;font-size:0.72rem;">This link is valid for 2 hours.</p>
+      <p style="color:#555;font-size:0.72rem;">Request from IP: {ip}</p>
+    """,
+    )
+    return html, plain
+
+
+async def send_reset_link_email(to_email: str, username: str, reset_url: str, ip: str = "Unknown") -> bool:
+    html, plain = _template_link_reset(username, reset_url, ip)
+    return _send_email_sync(to_email, f"Reset Your Password — {APP_NAME}", html, plain)
+
+

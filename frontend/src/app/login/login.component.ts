@@ -201,7 +201,7 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
                   </div>
                 </ng-container>
               </div>
-              <div *ngIf="mode === 'login'" style="text-align:right;margin-top:-8px;margin-bottom:16px">
+              <div *ngIf="mode === 'login' && isAdminLogin" style="text-align:right;margin-top:-8px;margin-bottom:16px">
                 <a href="javascript:void(0)" (click)="switchMode('forgot_password')" style="font-size:0.75rem;color:#ef4444;text-decoration:none;font-weight:600">Forgot Password?</a>
               </div>
               <button class="btn-submit" [ngClass]="isAdminLogin ? 'btn-admin' : 'btn-user'" [disabled]="isSubmitDisabled" (click)="submit()">
@@ -336,6 +336,18 @@ export class LoginComponent implements OnInit, OnDestroy {
 
     this.route.queryParams.subscribe(params => {
       const token = params['token'];
+      const modeParam = params['mode'];
+      const emailParam = params['email'];
+
+      if (token && modeParam === 'reset_password') {
+        this.mode = 'reset_password';
+        this.email = emailParam || '';
+        this.otp = token;
+        this.success = 'Please enter your strong new password below.';
+        this.error = '';
+        return;
+      }
+
       if (token) {
         this.authService.verifyEmailByLink(token).subscribe({
           next: () => {

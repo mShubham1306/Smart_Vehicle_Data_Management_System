@@ -19,7 +19,7 @@ import audit as audit_log
 from email_service import (
     send_verification_email, send_otp_email, send_welcome_email,
     send_login_alert, send_security_alert, send_account_locked_email,
-    send_login_otp_email,
+    send_login_otp_email, send_reset_link_email,
     is_smtp_configured, smtp_status, test_smtp_connection, get_frontend_url,
 )
 import asyncio
@@ -534,68 +534,7 @@ async def login(request: Request, payload: Dict[str, Any]):
                 headers={"X-Reason": "EMAIL_NOT_VERIFIED"}
             )
 
-    # ── Check if this is a new IP or device (Login 2FA OTP) ──────────────────
-    last_login_ip = user.get("last_login_ip")
-    last_device   = user.get("last_device")
-    
-    # Require 2FA OTP if:
-    # 1. No last login IP is recorded (first login)
-    # 2. OR IP has changed
-    # 3. OR Device has changed
-    is_new_login = (not last_login_ip) or (last_login_ip != ip) or (last_device != device[:300])
-    
-    if is_new_login:
-        # Generate 6-digit secure OTP
-        login_otp = f"{secrets.SystemRandom().randint(100000, 999999)}"
-        login_otp_hash = hashlib.sha256(login_otp.encode()).hexdigest()
-        expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
-        
-        await users_collection.update_one(
-            {"_id": user["_id"]},
-            {"$set": {
-                "login_otp_h": login_otp_hash,
-                "login_otp_exp": expire_time,
-                "login_otp_attempts": 0
-            }}
-        )
-        
-        to_addr = user.get("email") or f"{user.get('username')}@smartinsure.local"
-        
-        # Only attempt sending if SMTP is fully configured
-        email_sent = False
-        if is_smtp_configured():
-            try:
-                email_sent = await send_login_otp_email(to_addr, user.get("username"), login_otp, ip)
-            except Exception as e:
-                print(f"[Login Security] SMTP connection/send error: {e}")
-                email_sent = False
-        
-        if email_sent:
-            await audit_log.log_action(
-                audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
-                username=user.get("username"), ip=ip, user_agent=device,
-                detail="Login 2FA OTP requested (new IP/device)"
-            )
-            return {
-                "otp_required": True,
-                "email": to_addr,
-                "email_sent": True,
-                "message": "A 6-digit verification code has been sent to your email to confirm this login."
-            }
-        else:
-            # SMTP is unconfigured or failed to send -> Gracefully BYPASS 2FA to prevent user lockout!
-            print(f"\n=================================================="
-                  f"\n[Login Security] SMTP offline/failed. Gracefully BYPASSING 2FA for: {user.get('username')}"
-                  f"\n==================================================\n")
-            # Skip 2FA OTP, clean up OTP fields, and allow direct login
-            await users_collection.update_one(
-                {"_id": user["_id"]},
-                {"$unset": {
-                    "login_otp_h": "",
-                    "login_otp_exp": "",
-                    "login_otp_attempts": ""
-                }}
-            )
+
 
     # ── Successful login — reset failure count ────────────────────────────── 
     user_id        = str(user["_id"])
@@ -1120,16 +1059,16 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
             }
 
         # ── Standard Flow ────────────────────────────────────────────────────
-        # Secure 6-digit OTP generation using secrets
-        otp = f"{secrets.SystemRandom().randint(0, 999999):06d}"
-        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
-        expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        # Secure unique reset token generation
+        reset_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
+        expire_time = datetime.utcnow() + timedelta(hours=2) # link valid for 2 hours
         to_addr = user.get("email") or email
 
         await users_collection.update_one(
             {"_id": user["_id"]},
             {"$set": {
-                "reset_otp_h":            otp_hash,
+                "reset_otp_h":            token_hash,
                 "reset_otp_exp":          expire_time,
                 "reset_otp_attempts":     0,
                 "reset_otp_requested_at": datetime.utcnow(),
@@ -1137,27 +1076,28 @@ async def forgot_password(request: Request, payload: Dict[str, Any]):
         )
 
         username_str = user.get("username", email)
-        
-        # Attempt to send OTP email
-        email_sent = await send_otp_email(to_addr, username_str, otp, ip)
+        reset_url = f"{get_frontend_url()}/login?mode=reset_password&token={reset_token}&email={to_addr}"
 
-        # Fallback: Print OTP to terminal if SMTP is unconfigured or failed
+        # Attempt to send reset link email
+        email_sent = await send_reset_link_email(to_addr, username_str, reset_url, ip)
+
+        # Fallback: Print link to terminal if SMTP is unconfigured or failed
         if not is_smtp_configured() or not email_sent:
             print(f"\n=================================================="
-                  f"\n[LOCAL WORKER / DEV FALLBACK] PASSWORD RESET OTP GENERATED"
+                  f"\n[LOCAL WORKER / DEV FALLBACK] PASSWORD RESET LINK GENERATED"
                   f"\nUser: {username_str} ({to_addr})"
-                  f"\nReset OTP: {otp}"
+                  f"\nReset URL: {reset_url}"
                   f"\n==================================================\n")
 
         await audit_log.log_action(
             audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
             username=username_str, ip=ip, user_agent=_get_device(request),
-            detail="Reset OTP emailed" if email_sent else ("Reset OTP printed to console (SMTP offline)" if not is_smtp_configured() else "Reset OTP print fallback (SMTP failed)"),
+            detail="Reset link emailed" if email_sent else ("Reset link printed to console (SMTP offline)" if not is_smtp_configured() else "Reset link print fallback (SMTP failed)"),
         )
 
         return {
             "success": True,
-            "message": "If an account with this email exists, a reset code has been sent.",
+            "message": "If an account with this email exists, a secure password reset link has been sent.",
             "cooldown_seconds": 60
         }
     except HTTPException:
