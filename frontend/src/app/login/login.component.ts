@@ -115,17 +115,15 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
               <div class="logo-icon"><span>SI</span></div>
               <h1>SmartInsure</h1>
               <p>Vehicle Data Management Platform</p>
-            </div>
-
-            <!-- Admin Toggle -->
-            <label class="admin-toggle" for="adminChk" *ngIf="mode === 'login' || mode === 'register'">
+                   <!-- Admin Toggle -->
+            <label class="admin-toggle" for="adminChk" *ngIf="mode === 'login'">
               <input type="checkbox" id="adminChk" [(ngModel)]="isAdminLogin">
               <div>
                 <div class="admin-toggle-label">{{ isAdminLogin ? '👑 Admin Login' : '👤 User Login' }}</div>
                 <div class="admin-toggle-sub">{{ isAdminLogin ? 'Full access: all sheets, manage workers' : 'Standard access: your assigned sheet only' }}</div>
               </div>
             </label>
-
+ 
             <!-- Error -->
             <div class="err" *ngIf="error">
               <span>⚠ {{ error }}</span>
@@ -134,29 +132,30 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
             <div class="ok" *ngIf="success">
               <span>✓ {{ success }}</span>
             </div>
-
+ 
             <!-- Account Locked Banner -->
             <div *ngIf="isLocked" style="text-align:center;margin-bottom:16px">
               <div class="lock-badge">🔒 Account Temporarily Locked</div>
               <p style="color:#888;font-size:0.75rem;margin:0">Too many failed attempts. Please wait before trying again.</p>
             </div>
-
+ 
             <!-- ══ EMAIL VERIFICATION MODE ══ -->
             <ng-container *ngIf="mode === 'verify_email'">
               <div class="info">
-                <p style="color:#60a5fa;font-size:0.82rem;font-weight:700;margin:0 0 6px">📧 Check Your Inbox</p>
-                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="emailProvider !== 'firebase'">We sent a verification code to <strong style="color:#f0f0f0">{{ email }}</strong>. Enter the 6-digit code below or click the link in the email.</p>
-                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="emailProvider === 'firebase'">We sent a secure verification link to <strong style="color:#f0f0f0">{{ email }}</strong>. Please check your inbox (and spam folder) and click the link to verify your account.</p>
+                <p style="color:#60a5fa;font-size:0.82rem;font-weight:700;margin:0 0 6px">📧 {{ isLogin2FA ? 'Login Verification' : 'Check Your Inbox' }}</p>
+                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="isLogin2FA">We detected a login from a new device or location. Enter the 6-digit verification code sent to <strong style="color:#f0f0f0">{{ email }}</strong>.</p>
+                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="!isLogin2FA && emailProvider !== 'firebase'">We sent a verification code to <strong style="color:#f0f0f0">{{ email }}</strong>. Enter the 6-digit code below or click the link in the email.</p>
+                <p style="color:#888;font-size:0.78rem;margin:0" *ngIf="!isLogin2FA && emailProvider === 'firebase'">We sent a secure verification link to <strong style="color:#f0f0f0">{{ email }}</strong>. Please check your inbox (and spam folder) and click the link to verify your account.</p>
               </div>
-              <div class="field" *ngIf="emailProvider !== 'firebase'">
-                <label>6-Digit Verification Code</label>
+              <div class="field" *ngIf="isLogin2FA || emailProvider !== 'firebase'">
+                <label>6-Digit Code</label>
                 <input class="otp-input" type="text" [(ngModel)]="otp" maxlength="6" placeholder="000000" autocomplete="one-time-code">
               </div>
-              <button class="btn-submit btn-admin" [disabled]="loading || (emailProvider !== 'firebase' && otp.length !== 6)" (click)="emailProvider === 'firebase' ? switchMode('login') : submitVerifyEmail()">
-                <span *ngIf="!loading">{{ emailProvider === 'firebase' ? '→ Proceed to Sign In' : '✓ Verify Email' }}</span>
+              <button class="btn-submit btn-admin" [disabled]="loading || (!isLogin2FA && emailProvider === 'firebase' ? false : otp.length !== 6)" (click)="!isLogin2FA && emailProvider === 'firebase' ? switchMode('login') : submitVerifyEmail()">
+                <span *ngIf="!loading">{{ isLogin2FA ? '✓ Verify Login' : (emailProvider === 'firebase' ? '→ Proceed to Sign In' : '✓ Verify Email') }}</span>
                 <span *ngIf="loading" style="display:flex;align-items:center;justify-content:center;gap:8px"><span class="spin"></span>Verifying…</span>
               </button>
-              <button class="btn-secondary" [disabled]="resendCooldown > 0" (click)="resendVerification()">
+              <button class="btn-secondary" *ngIf="!isLogin2FA" [disabled]="resendCooldown > 0" (click)="resendVerification()">
                 {{ resendCooldown > 0 ? 'Resend in ' + resendCooldown + 's' : '↺ Resend Verification Email' }}
               </button>
             </ng-container>
@@ -290,6 +289,7 @@ type Mode = 'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_pas
 export class LoginComponent implements OnInit, OnDestroy {
   mode: Mode = 'login';
   emailProvider: 'firebase' | 'smtp' | 'none' = 'smtp';
+  isLogin2FA = false;
   username = '';
   email = '';
   password = '';
@@ -360,6 +360,12 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   switchMode(m: Mode) {
     this.mode = m; this.error = ''; this.success = ''; this.isLocked = false;
+    this.isLogin2FA = false;
+    if (m === 'register') {
+      this.isAdminLogin = true;
+    } else if (m === 'login') {
+      this.isAdminLogin = false;
+    }
   }
 
   goToLogin() { this.showReauth = false; this.switchMode('login'); }
@@ -428,6 +434,17 @@ export class LoginComponent implements OnInit, OnDestroy {
       next: (res: any) => {
         this.loading = false;
 
+        // Login 2FA — OTP required
+        if (res.otp_required) {
+          this.isLogin2FA = true;
+          this.email = res.email;
+          this.otp = '';
+          this.mode = 'verify_email';
+          this.success = 'A verification code has been sent to your email to confirm this login.';
+          this.error = '';
+          return;
+        }
+
         // Registration — email verification required
         if (res.email_verification_required) {
           this.mode = 'verify_email';
@@ -462,17 +479,32 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   submitVerifyEmail() {
     this.error = ''; this.loading = true;
-    this.authService.verifyEmailOtp({ email: this.email.trim().toLowerCase(), otp: this.otp }).subscribe({
-      next: () => {
-        this.loading = false;
-        this.success = 'Email verified! You can now sign in.';
-        setTimeout(() => this.switchMode('login'), 1500);
-      },
-      error: (err: any) => {
-        this.loading = false;
-        this.error = this.friendlyError(err, 'verify');
-      }
-    });
+    if (this.isLogin2FA) {
+      this.authService.verifyLoginOtp({ username: this.username.trim().toLowerCase(), otp: this.otp }).subscribe({
+        next: (res: any) => {
+          this.loading = false;
+          this.success = 'Login verified! Welcome back.';
+          const role = res?.user?.role ?? this.authService.getRole();
+          this.router.navigate([role === 'admin' ? '/app/dashboard' : '/app/search']);
+        },
+        error: (err: any) => {
+          this.loading = false;
+          this.error = this.friendlyError(err, 'verify');
+        }
+      });
+    } else {
+      this.authService.verifyEmailOtp({ email: this.email.trim().toLowerCase(), otp: this.otp }).subscribe({
+        next: () => {
+          this.loading = false;
+          this.success = 'Email verified! You can now sign in.';
+          setTimeout(() => this.switchMode('login'), 1500);
+        },
+        error: (err: any) => {
+          this.loading = false;
+          this.error = this.friendlyError(err, 'verify');
+        }
+      });
+    }
   }
 
   private startResendCooldown() {

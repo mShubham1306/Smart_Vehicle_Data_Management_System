@@ -250,3 +250,29 @@ async def send_security_alert(to_email: str, username: str, event: str, detail: 
 async def send_account_locked_email(to_email: str, username: str, unlock_at: str, ip: str) -> bool:
     html, plain = _template_account_locked(username, unlock_at, ip)
     return _send_email_sync(to_email, f"Account Locked — {APP_NAME}", html, plain)
+
+
+def _template_login_otp(username: str, otp: str, ip: str = "Unknown") -> tuple[str, str]:
+    plain = (
+        f"Hi {username},\n\n"
+        f"A login was attempted from a new IP or device. Your {APP_NAME} verification code is: {otp}\n\n"
+        f"Expires in 5 minutes.\n"
+        f"If you did not attempt this login, please change your password immediately.\n"
+    )
+    html = _base_template(
+        f"Login Verification Code — {APP_NAME}",
+        f"""
+      <h2 style="color:#f0f0f0;">New Login Verification</h2>
+      <p style="color:#888;">Hi <strong style="color:#fff;">{username}</strong>, enter this code to complete your login from a new IP or device:</p>
+      <p style="text-align:center;color:#ef4444;font-size:2.5rem;font-weight:900;letter-spacing:10px;font-family:monospace;">{otp}</p>
+      <p style="color:#f59e0b;font-size:0.72rem;">Expires in 5 minutes</p>
+      <p style="color:#555;font-size:0.72rem;">Login attempt from IP: {ip}</p>
+    """,
+    )
+    return html, plain
+
+
+async def send_login_otp_email(to_email: str, username: str, otp: str, ip: str = "Unknown") -> bool:
+    html, plain = _template_login_otp(username, otp, ip)
+    return _send_email_sync(to_email, f"Login Verification Code — {APP_NAME}", html, plain)
+

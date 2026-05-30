@@ -364,6 +364,23 @@ async def get_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
             "data": structured}
 
 
+@router.delete("/vehicles/{vehicle_number}")
+async def delete_vehicle(vehicle_number: str, sheet: Optional[str] = Query(None),
+                         current_user: Dict = Depends(require_admin)):
+    """Admin-only: delete a specific vehicle record."""
+    uid = current_user["id"]
+    v_num = vehicle_number.replace(" ", "").upper().strip()
+    query: Dict[str, Any] = {"user_id": uid, "vehicle_number": v_num}
+    if sheet:
+        query["sheet_name"] = clean(sheet)
+
+    result = await vehicles_collection.delete_one(query)
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail=f"No record found for: {v_num}")
+
+    return {"message": "Record deleted successfully.", "vehicle_number": v_num}
+
+
 @router.get("/vehicles")
 async def list_vehicles(page: int = 1, limit: int = 50, sheet: Optional[str] = Query("default"),
                         current_user: Dict = Depends(require_admin)):

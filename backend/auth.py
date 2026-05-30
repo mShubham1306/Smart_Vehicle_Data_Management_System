@@ -19,6 +19,7 @@ import audit as audit_log
 from email_service import (
     send_verification_email, send_otp_email, send_welcome_email,
     send_login_alert, send_security_alert, send_account_locked_email,
+    send_login_otp_email,
     is_smtp_configured, smtp_status, test_smtp_connection, get_frontend_url,
 )
 import asyncio
@@ -233,17 +234,12 @@ async def register(payload: Dict[str, Any], request: Request):
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
 
     # ── Role Assignment ───────────────────────────────────────────────────── 
-    total_users = await users_collection.count_documents({})
-    requested_role = str(payload.get("role", "")).lower().strip()
-    admin_id_field = payload.get("admin_id")
-
-    if requested_role == "admin" or total_users == 0:
-        role = "admin"
-        admin_id_field = None
-    else:
-        role = "worker"
+    # Public registration is restricted to creating Admin accounts only. Workers must be created by admins.
+    role = "admin"
+    admin_id_field = None
 
     # First admin is auto-verified (bootstrap); others require verification
+    total_users = await users_collection.count_documents({})
     is_first_user = (total_users == 0)
 
     # ── Firebase Auth Flow ───────────────────────────────────────────────────
@@ -530,6 +526,53 @@ async def login(request: Request, payload: Dict[str, Any]):
                 headers={"X-Reason": "EMAIL_NOT_VERIFIED"}
             )
 
+    # ── Check if this is a new IP or device (Login 2FA OTP) ──────────────────
+    last_login_ip = user.get("last_login_ip")
+    last_device   = user.get("last_device")
+    
+    # Require 2FA OTP if:
+    # 1. No last login IP is recorded (first login)
+    # 2. OR IP has changed
+    # 3. OR Device has changed
+    is_new_login = (not last_login_ip) or (last_login_ip != ip) or (last_device != device[:300])
+    
+    if is_new_login:
+        # Generate 6-digit secure OTP
+        login_otp = f"{secrets.SystemRandom().randint(100000, 999999)}"
+        login_otp_hash = hashlib.sha256(login_otp.encode()).hexdigest()
+        expire_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "login_otp_h": login_otp_hash,
+                "login_otp_exp": expire_time,
+                "login_otp_attempts": 0
+            }}
+        )
+        
+        to_addr = user.get("email") or f"{user.get('username')}@smartinsure.local"
+        email_sent = await send_login_otp_email(to_addr, user.get("username"), login_otp, ip)
+        
+        if not is_smtp_configured() or not email_sent:
+            print(f"\n=================================================="
+                  f"\n[LOCAL WORKER / DEV FALLBACK] LOGIN VERIFICATION OTP GENERATED"
+                  f"\nUser: {user.get('username')} ({to_addr})"
+                  f"\nLogin OTP: {login_otp}"
+                  f"\n==================================================\n")
+                  
+        await audit_log.log_action(
+            audit_log.OTP_REQUESTED, user_id=str(user["_id"]),
+            username=user.get("username"), ip=ip, user_agent=device,
+            detail="Login 2FA OTP requested (new IP/device)"
+        )
+        
+        return {
+            "otp_required": True,
+            "email": to_addr,
+            "message": "A 6-digit verification code has been sent to your email to confirm this login."
+        }
+
     # ── Successful login — reset failure count ────────────────────────────── 
     user_id        = str(user["_id"])
     role           = user.get("role", "worker")
@@ -587,6 +630,129 @@ async def login(request: Request, payload: Dict[str, Any]):
         "user": {
             "id":             user_id,
             "username":       username,
+            "role":           role,
+            "assigned_sheet": assigned_sheet,
+            "admin_id":       admin_id,
+            "email_verified": user.get("email_verified", True),
+            "last_login_at":  user.get("last_login_at"),
+        },
+    }
+
+
+@auth_router.post("/login/verify-otp")
+async def verify_login_otp(request: Request, payload: Dict[str, Any]):
+    """Verify login 2FA OTP for a new IP or device."""
+    username = str(payload.get("username", "")).strip().lower()
+    otp      = str(payload.get("otp", "")).strip()
+    ip       = _get_ip(request)
+    device   = _get_device(request)
+
+    if not username or not otp:
+        raise HTTPException(status_code=400, detail="Username and OTP are required.")
+
+    if "@" in username:
+        user = await users_collection.find_one({"email": username})
+    else:
+        user = await users_collection.find_one({"username": username})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    attempts = user.get("login_otp_attempts", 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many OTP attempts. Please log in again to request a new code.")
+
+    stored_hash = user.get("login_otp_h")
+    stored_exp  = user.get("login_otp_exp")
+
+    if not stored_hash:
+        raise HTTPException(status_code=400, detail="No pending login verification request. Please log in first.")
+
+    if not stored_exp or datetime.utcnow() > stored_exp:
+        raise HTTPException(status_code=400, detail="OTP has expired. Please log in again.")
+
+    submitted_hash = hashlib.sha256(otp.encode()).hexdigest()
+    if submitted_hash != stored_hash:
+        await users_collection.update_one(
+            {"_id": user["_id"]}, {"$inc": {"login_otp_attempts": 1}}
+        )
+        await audit_log.log_action(
+            audit_log.OTP_FAILED, user_id=str(user["_id"]),
+            username=user.get("username"), ip=ip, user_agent=device,
+            detail=f"Login OTP attempt {attempts + 1}/{OTP_MAX_ATTEMPTS}"
+        )
+        raise HTTPException(status_code=400, detail="Invalid OTP.")
+
+    # OTP is correct! Clear it and finalize the login
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "failed_attempts":    0,
+                "locked_until":       None,
+                "last_login_at":      datetime.utcnow(),
+                "last_login_ip":      ip,
+                "last_device":        device[:300],
+            },
+            "$unset": {
+                "login_otp_h": "",
+                "login_otp_exp": "",
+                "login_otp_attempts": "",
+            }
+        }
+    )
+
+    user_id        = str(user["_id"])
+    role           = user.get("role", "worker")
+    assigned_sheet = user.get("assigned_sheet", "default")
+    admin_id       = user.get("admin_id")
+
+    # Create refresh token
+    raw_refresh, hashed_refresh, refresh_exp = create_refresh_token(user_id)
+
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "refresh_token_hash": hashed_refresh,
+            "refresh_token_exp":  refresh_exp,
+        }}
+    )
+
+    # Store session fingerprint
+    await sessions_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "user_id":    user_id,
+            "username":   user["username"],
+            "ip":         ip,
+            "user_agent": device[:300],
+            "created_at": datetime.utcnow(),
+            "expires_at": datetime.utcnow() + timedelta(hours=_get_token_expire_hours(role)),
+        }},
+        upsert=True
+    )
+
+    # Audit log
+    await audit_log.log_action(
+        audit_log.LOGIN, user_id=user_id, username=user["username"],
+        ip=ip, user_agent=device, detail=f"Role: {role} (Verified via Login 2FA OTP)"
+    )
+
+    # Send login alert (fire-and-forget)
+    if user.get("email"):
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        asyncio.create_task(send_login_alert(user["email"], user["username"], ip, device, ts))
+
+    access_token = create_access_token(user_id, user["username"], role, assigned_sheet, admin_id)
+
+    return {
+        "message":       "Login successful.",
+        "token":         access_token,
+        "refresh_token": raw_refresh,
+        "expires_in_hours": _get_token_expire_hours(role),
+        "user": {
+            "id":             user_id,
+            "username":       user["username"],
             "role":           role,
             "assigned_sheet": assigned_sheet,
             "admin_id":       admin_id,

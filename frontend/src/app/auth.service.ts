@@ -223,6 +223,16 @@ export class AuthService {
     return this.postAuth('/verify-email-otp', payload);
   }
 
+  verifyLoginOtp(payload: any): Observable<any> {
+    return this.postAuth('/login/verify-otp', payload).pipe(
+      tap((res) => {
+        if (res.token && res.user) {
+          this.setSession(res.token, res.user, res.refresh_token, res.expires_in_hours);
+        }
+      })
+    );
+  }
+
   resendVerification(payload: any): Observable<any> {
     return this.postAuth('/resend-verification', payload);
   }
