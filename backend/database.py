@@ -7,14 +7,16 @@ load_dotenv()
 # OPTIMIZED CONNECTION POOLING FOR SCALING
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
-# Append pool settings — use & if ? already present (e.g. ?appName=...), else use ?
-_pool_params = "maxPoolSize=50&minPoolSize=5&maxIdleTimeMS=45000&serverSelectionTimeoutMS=10000&waitQueueTimeoutMS=10000"
-if "?" in MONGO_URI:
-    MONGO_URI += "&" + _pool_params
-else:
-    MONGO_URI += "?" + _pool_params
+# Pass pool settings as constructor kwargs (safe — no URI string manipulation)
+client = AsyncIOMotorClient(
+    MONGO_URI,
+    maxPoolSize=50,
+    minPoolSize=5,
+    maxIdleTimeMS=45000,
+    serverSelectionTimeoutMS=10000,
+    waitQueueTimeoutMS=10000,
+)
 
-client = AsyncIOMotorClient(MONGO_URI)
 database = client.vehicle_insurance
 
 vehicles_collection          = database.get_collection("vehicles")
