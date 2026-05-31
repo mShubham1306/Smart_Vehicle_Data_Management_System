@@ -384,32 +384,54 @@ export class SearchComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // ── WhatsApp: share ONLY the PDF file (no link, no text) ──────────
+      // ── WhatsApp: share ONLY the PDF file (no link, no text, no Windows share dialog) ──
       if (action === 'whatsapp') {
         const file = new File([blob], filename, { type: 'application/pdf' });
 
-        // 1. Try native Web Share API (Android / iOS / mobile Chrome with WA installed)
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({ files: [file], title: filename });
-            this.showToast('PDF shared via WhatsApp.');
-            return;
-          } catch (shareErr: any) {
-            if (shareErr?.name === 'AbortError') {
-              // User cancelled the share sheet — nothing to do
-              return;
+        const launchWhatsAppApp = (): Promise<boolean> => new Promise(resolve => {
+          let opened = false;
+          const finish = (result: boolean) => {
+            if (!opened) {
+              opened = true;
+              window.removeEventListener('blur', onBlur);
+              document.removeEventListener('visibilitychange', onVisibility);
+              resolve(result);
             }
-            // Non-abort error: fall through to desktop fallback
-            console.warn('[WebShare] failed, using desktop fallback', shareErr);
-          }
+          };
+
+          const onBlur = () => finish(true);
+          const onVisibility = () => {
+            if (document.visibilityState === 'hidden') {
+              finish(true);
+            }
+          };
+
+          window.addEventListener('blur', onBlur, { once: true });
+          document.addEventListener('visibilitychange', onVisibility);
+
+          const launcher = document.createElement('a');
+          launcher.href = 'whatsapp://send';
+          launcher.style.display = 'none';
+          document.body.appendChild(launcher);
+          launcher.click();
+          setTimeout(() => {
+            document.body.removeChild(launcher);
+            finish(false);
+          }, 1500);
+        });
+
+        pdf.save(filename);
+        this.showToast('PDF downloaded — checking for WhatsApp app.');
+
+        const appOpened = await launchWhatsAppApp();
+        if (appOpened) {
+          this.showToast('WhatsApp app opened — attach the downloaded PDF to share.');
+          return;
         }
 
-        // 2. Desktop / unsupported browser fallback:
-        //    Auto-download the PDF then open WhatsApp Web so user can attach it
-        pdf.save(filename);
-        const waUrl = isMobile ? 'whatsapp://send' : 'https://web.whatsapp.com/';
-        window.open(waUrl, '_blank');
-        this.showToast('PDF downloaded — open WhatsApp and attach the file to share.');
+        window.open('https://web.whatsapp.com/', '_blank');
+        this.showToast('WhatsApp app not installed — opened WhatsApp Web. Attach the downloaded PDF to share.');
+        return;
       }
     } catch (err) {
       console.error('[PDF]', err);
