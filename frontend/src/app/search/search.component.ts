@@ -300,25 +300,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     setTimeout(() => this.toastMsg = '', 4000);
   }
 
-  /**
-   * Detects whether the user is on a mobile device.
-   * Mobile → wa.me deep link (opens WhatsApp app)
-   * Desktop → web.whatsapp.com (opens WhatsApp Web)
-   */
-  private openWhatsApp(url: string, text: string) {
-    const encodedText = encodeURIComponent(text);
-    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    let waUrl: string;
-    if (isMobile) {
-      // Opens WhatsApp app directly on mobile
-      waUrl = `whatsapp://send?text=${encodedText}`;
-    } else {
-      // Opens WhatsApp Web on desktop
-      waUrl = `https://web.whatsapp.com/send?text=${encodedText}`;
-    }
-    window.open(waUrl, '_blank');
-  }
-
   async generatePdf(action: 'download' | 'whatsapp' | 'regenerate') {
     if (this.generating || !this.result) return;
     this.generating = true;
@@ -376,53 +357,60 @@ export class SearchComponent implements OnInit, OnDestroy {
 
       const vNum = (this.result.vehicle_number || 'Quote').replace(/\s+/g, '_');
       const filename = `Premium_Breakup_${vNum}.pdf`;
+      const blob = pdf.output('blob');
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+      // ── Download / Regenerate ──────────────────────────────────────────
       if (action === 'download' || action === 'regenerate') {
         pdf.save(filename);
         this.showToast(action === 'regenerate' ? 'PDF regenerated and downloaded.' : 'PDF downloaded successfully.');
+
+        // Upload to server for persistent shareable link
+        this.ds.uploadPdf(blob, {
+          vehicle_number: this.result.vehicle_number,
+          sheet_name: this.result.sheet_name,
+          ...this.tracking
+        }).subscribe({
+          next: res => {
+            this.currentQuoteId = res.quote_id;
+            this.currentSystemId = res.system_id || '';
+            this.shareUrl = res.url;
+            if (res.admin_name && !this.tracking.admin_name) {
+              this.tracking.admin_name = res.admin_name;
+            }
+          },
+          error: () => {} // silent – PDF already saved locally
+        });
+        return;
       }
 
-      // Upload PDF to backend for persistent shareable link
-      const blob = pdf.output('blob');
-
+      // ── WhatsApp: share ONLY the PDF file (no link, no text) ──────────
       if (action === 'whatsapp') {
         const file = new File([blob], filename, { type: 'application/pdf' });
+
+        // 1. Try native Web Share API (Android / iOS / mobile Chrome with WA installed)
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
-            await navigator.share({
-              files: [file],
-              title: filename
-            });
-            this.showToast('Native share opened.');
-            this.generating = false;
-            this.currentAction = null;
+            await navigator.share({ files: [file], title: filename });
+            this.showToast('PDF shared via WhatsApp.');
             return;
-          } catch (shareErr) {
-            console.warn('[WebShare] Native share cancelled or failed, falling back...', shareErr);
+          } catch (shareErr: any) {
+            if (shareErr?.name === 'AbortError') {
+              // User cancelled the share sheet — nothing to do
+              return;
+            }
+            // Non-abort error: fall through to desktop fallback
+            console.warn('[WebShare] failed, using desktop fallback', shareErr);
           }
         }
+
+        // 2. Desktop / unsupported browser fallback:
+        //    Auto-download the PDF then open WhatsApp Web so user can attach it
+        pdf.save(filename);
+        const waUrl = isMobile ? 'whatsapp://send' : 'https://web.whatsapp.com/';
+        window.open(waUrl, '_blank');
+        this.showToast('PDF downloaded — open WhatsApp and attach the file to share.');
       }
-
-      this.ds.uploadPdf(blob, {
-        vehicle_number: this.result.vehicle_number,
-        sheet_name: this.result.sheet_name,
-        ...this.tracking
-      }).subscribe({
-        next: res => {
-          this.currentQuoteId = res.quote_id;
-          this.currentSystemId = res.system_id || '';
-          this.shareUrl = res.url;
-          if (res.admin_name && !this.tracking.admin_name) {
-            this.tracking.admin_name = res.admin_name;
-          }
-
-          if (action === 'whatsapp') {
-            this.openWhatsApp(res.url, res.url);
-            this.showToast('WhatsApp opened with direct PDF link.');
-          }
-        },
-        error: () => this.showToast('PDF saved locally but server upload failed.', false)
-      });
     } catch (err) {
       console.error('[PDF]', err);
       this.showToast('PDF generation failed. Please try again.', false);
