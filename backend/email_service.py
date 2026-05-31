@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
 from typing import Optional, Dict, Any
+import asyncio
 
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -202,6 +203,17 @@ def _send_email_sync(to_email: str, subject: str, html_body: str, plain_body: st
     return False
 
 
+async def _send_email_async(to_email: str, subject: str, html_body: str, plain_body: str = "", max_retries: int = 3) -> bool:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # Fallback if no event loop is running (e.g. celery worker synchronous mode)
+        return _send_email_sync(to_email, subject, html_body, plain_body, max_retries)
+    return await loop.run_in_executor(
+        None, _send_email_sync, to_email, subject, html_body, plain_body, max_retries
+    )
+
+
 def test_smtp_connection() -> Dict[str, Any]:
     """Used by admin health endpoint to verify Render SMTP credentials."""
     if not is_smtp_configured():
@@ -224,32 +236,32 @@ def test_smtp_connection() -> Dict[str, Any]:
 
 async def send_verification_email(to_email: str, username: str, verify_url: str, otp: str) -> bool:
     html, plain = _template_verification(username, verify_url, otp)
-    return _send_email_sync(to_email, f"Verify Your Email — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"Verify Your Email — {APP_NAME}", html, plain)
 
 
 async def send_otp_email(to_email: str, username: str, otp: str, ip: str = "Unknown") -> bool:
     html, plain = _template_otp_reset(username, otp, ip)
-    return _send_email_sync(to_email, f"Password Reset Code — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"Password Reset Code — {APP_NAME}", html, plain)
 
 
 async def send_welcome_email(to_email: str, username: str, role: str) -> bool:
     html, plain = _template_welcome(username, role)
-    return _send_email_sync(to_email, f"Welcome to {APP_NAME}!", html, plain)
+    return await _send_email_async(to_email, f"Welcome to {APP_NAME}!", html, plain)
 
 
 async def send_login_alert(to_email: str, username: str, ip: str, device: str, timestamp: str) -> bool:
     html, plain = _template_login_alert(username, ip, device, timestamp)
-    return _send_email_sync(to_email, f"New Login — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"New Login — {APP_NAME}", html, plain)
 
 
 async def send_security_alert(to_email: str, username: str, event: str, detail: str) -> bool:
     html, plain = _template_security_alert(username, event, detail)
-    return _send_email_sync(to_email, f"Security Alert — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"Security Alert — {APP_NAME}", html, plain)
 
 
 async def send_account_locked_email(to_email: str, username: str, unlock_at: str, ip: str) -> bool:
     html, plain = _template_account_locked(username, unlock_at, ip)
-    return _send_email_sync(to_email, f"Account Locked — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"Account Locked — {APP_NAME}", html, plain)
 
 
 def _template_login_otp(username: str, otp: str, ip: str = "Unknown") -> tuple[str, str]:
@@ -274,7 +286,7 @@ def _template_login_otp(username: str, otp: str, ip: str = "Unknown") -> tuple[s
 
 async def send_login_otp_email(to_email: str, username: str, otp: str, ip: str = "Unknown") -> bool:
     html, plain = _template_login_otp(username, otp, ip)
-    return _send_email_sync(to_email, f"Login Verification Code — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"Login Verification Code — {APP_NAME}", html, plain)
 
 
 def _template_link_reset(username: str, reset_url: str, ip: str = "Unknown") -> tuple[str, str]:
@@ -301,6 +313,6 @@ def _template_link_reset(username: str, reset_url: str, ip: str = "Unknown") -> 
 
 async def send_reset_link_email(to_email: str, username: str, reset_url: str, ip: str = "Unknown") -> bool:
     html, plain = _template_link_reset(username, reset_url, ip)
-    return _send_email_sync(to_email, f"Reset Your Password — {APP_NAME}", html, plain)
+    return await _send_email_async(to_email, f"Reset Your Password — {APP_NAME}", html, plain)
 
 

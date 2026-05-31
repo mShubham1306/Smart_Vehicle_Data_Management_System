@@ -22,7 +22,7 @@ except ImportError:
     pytesseract = None
 
 from database import doc_uploads_collection, users_collection
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, bearer_scheme, decode_token, is_token_revoked
 
 # Setup router
 router = APIRouter()
@@ -44,6 +44,36 @@ def serialize_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     if "upload_time" in serialized and isinstance(serialized["upload_time"], datetime):
         serialized["upload_time"] = serialized["upload_time"].isoformat()
     return serialized
+
+
+async def get_optional_user(
+    credentials: Optional[Any] = Depends(bearer_scheme)
+) -> Optional[Dict[str, Any]]:
+    if not credentials:
+        return None
+    try:
+        payload = decode_token(credentials.credentials)
+        if not payload:
+            return None
+        jti = payload.get("jti")
+        if jti and await is_token_revoked(jti):
+            return None
+        role = payload.get("role", "worker")
+        user_id = payload["sub"]
+        admin_id = payload.get("admin_id")
+        return {
+            "id":             user_id,
+            "username":       payload.get("username", ""),
+            "name":           payload.get("name", ""),
+            "role":           role,
+            "assigned_sheet": payload.get("assigned_sheet", None),
+            "data_owner_id":  admin_id if (role == "worker" and admin_id) else user_id,
+            "admin_id":       admin_id,
+            "jti":            jti,
+            "exp":            payload.get("exp"),
+        }
+    except Exception:
+        return None
 
 # Helper to extract fields using regular expressions
 def extract_fields_from_text(text: str) -> Dict[str, str]:
@@ -116,33 +146,49 @@ def extract_fields_from_text(text: str) -> Dict[str, str]:
                 break
 
     # 4. Dates (Start and End Dates)
-    # Search for all dates formatted as DD/MM/YYYY or DD-MM-YYYY or YYYY-MM-DD
-    dates = re.findall(r'\b(\d{2}[-/\.]\d{2}[-/\.]\d{4})\b', text)
-    if not dates:
+    # Search for all dates formatted as DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+    dates = re.findall(r'\b(\d{2}[-/\.]\d{2}[-/\.]\d{2,4})\b', text)
+    cleaned_dates = []
+    for d in dates:
+        parts = re.split(r'[-/\.]', d)
+        if len(parts) == 3:
+            day, month, year = parts[0], parts[1], parts[2]
+            if len(year) == 2:
+                year = f"20{year}"
+            cleaned_dates.append(f"{day}-{month}-{year}")
+    
+    if not cleaned_dates:
         # Check YYYY-MM-DD
         dates_alt = re.findall(r'\b(\d{4}[-/\.]\d{2}[-/\.]\d{2})\b', text)
-        if dates_alt:
-            # Convert to DD-MM-YYYY format
-            dates = []
-            for d in dates_alt:
-                parts = re.split(r'[-/\.]', d)
-                dates.append(f"{parts[2]}-{parts[1]}-{parts[0]}")
+        for d in dates_alt:
+            parts = re.split(r'[-/\.]', d)
+            cleaned_dates.append(f"{parts[2]}-{parts[1]}-{parts[0]}")
 
-    if dates:
-        # Often start date is the first found, and end date is the second found,
-        # but let's be smarter if we see keywords
-        fields["policy_start_date"] = dates[0]
-        if len(dates) > 1:
-            fields["policy_end_date"] = dates[1]
+    if cleaned_dates:
+        fields["policy_start_date"] = cleaned_dates[0]
+        if len(cleaned_dates) > 1:
+            fields["policy_end_date"] = cleaned_dates[1]
 
-    # Date keyword search override
-    start_match = re.search(r'(?i)(?:period\s*of\s*insurance\s*from|duration\s*from|valid\s*from|effective\s*date|start\s*date)[^\d]*(\d{2}[-/\.]\d{2}[-/\.]\d{4})', text)
+    # Date keyword search override (with 2-digit or 4-digit years)
+    start_match = re.search(r'(?i)(?:period\s*of\s*insurance\s*from|duration\s*from|valid\s*from|effective\s*date|start\s*date)[^\d]*(\d{2}[-/\.]\d{2}[-/\.]\d{2,4})', text)
     if start_match:
-        fields["policy_start_date"] = start_match.group(1)
+        d = start_match.group(1)
+        parts = re.split(r'[-/\.]', d)
+        if len(parts) == 3:
+            year = parts[2]
+            if len(year) == 2:
+                year = f"20{year}"
+            fields["policy_start_date"] = f"{parts[0]}-{parts[1]}-{year}"
 
-    end_match = re.search(r'(?i)(?:period\s*of\s*insurance\s*to|duration\s*to|valid\s*to|expiry\s*date|end\s*date|expires\s*on)[^\d]*(\d{2}[-/\.]\d{2}[-/\.]\d{4})', text)
+    end_match = re.search(r'(?i)(?:period\s*of\s*insurance\s*to|duration\s*to|valid\s*to|expiry\s*date|end\s*date|expires\s*on)[^\d]*(\d{2}[-/\.]\d{2}[-/\.]\d{2,4})', text)
     if end_match:
-        fields["policy_end_date"] = end_match.group(1)
+        d = end_match.group(1)
+        parts = re.split(r'[-/\.]', d)
+        if len(parts) == 3:
+            year = parts[2]
+            if len(year) == 2:
+                year = f"20{year}"
+            fields["policy_end_date"] = f"{parts[0]}-{parts[1]}-{year}"
 
     # 5. Customer Name (Insured Name)
     # Often comes after "Insured Name", "Name of Insured", "Customer Name", "Mr/Mrs/Ms"
@@ -156,17 +202,17 @@ def extract_fields_from_text(text: str) -> Dict[str, str]:
             fields["insured_name"] = name_fallback.group(1).strip()
 
     # 6. IDV
-    idv_match = re.search(r'(?i)(?:idv|insured\s*declared\s*value)[^\d₹]*([\d,]{3,9})', text)
+    idv_match = re.search(r'(?i)(?:idv|insured\s*declared\s*value)[^\d₹]*([\d,]+(?:\.\d{2})?)', text)
     if idv_match:
         fields["idv"] = idv_match.group(1).replace(",", "").strip()
 
     # 7. Premium
-    prem_match = re.search(r'(?i)(?:net\s*premium|total\s*premium|premium\s*payable|final\s*premium)[^\d₹]*([\d,]{3,9})', text)
+    prem_match = re.search(r'(?i)(?:net\s*premium|total\s*premium|premium\s*payable|final\s*premium)[^\d₹]*([\d,]+(?:\.\d{2})?)', text)
     if prem_match:
         fields["premium"] = prem_match.group(1).replace(",", "").strip()
     else:
         # Try generic premium search
-        prem_generic = re.search(r'(?i)premium[^\d₹]*([\d,]{3,9})', text)
+        prem_generic = re.search(r'(?i)premium[^\d₹]*([\d,]+(?:\.\d{2})?)', text)
         if prem_generic:
             fields["premium"] = prem_generic.group(1).replace(",", "").strip()
 
@@ -184,8 +230,8 @@ def extract_fields_from_text(text: str) -> Dict[str, str]:
     if model_match:
         fields["vehicle_model"] = model_match.group(1).strip()
 
-    # 10. Mobile Number
-    mobile_match = re.search(r'\b([6-9]\d{9})\b', text)
+    # 10. Mobile Number (Support +91, 91, or 0 prefixes)
+    mobile_match = re.search(r'(?:\+?91|0)?[-\s]?\b([6-9]\d{9})\b', text)
     if mobile_match:
         fields["mobile_number"] = mobile_match.group(1)
 
@@ -244,7 +290,7 @@ def run_ocr_on_file(file_path: str, file_type: str) -> tuple[str, float]:
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
     Upload a document, perform OCR, parse fields, and save to MongoDB.
@@ -286,11 +332,16 @@ async def upload_document(
     else:
         ocr_status = "success"
 
-    # Get user name and email from database
-    user_id = current_user["id"]
-    db_user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    user_name = db_user.get("name", db_user.get("username", "User")) if db_user else current_user.get("username", "User")
-    user_email = db_user.get("email", "") if db_user else ""
+    # Get user name and email from database (or set as guest if unauthenticated)
+    if current_user:
+        user_id = current_user["id"]
+        db_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user_name = db_user.get("name", db_user.get("username", "User")) if db_user else current_user.get("username", "User")
+        user_email = db_user.get("email", "") if db_user else ""
+    else:
+        user_id = "guest"
+        user_name = "Guest Uploader"
+        user_email = "guest@smartinsure.local"
 
     # Document schema
     doc_data = {
@@ -517,7 +568,7 @@ async def export_documents_excel(
     )
 
     # 1. Sheet Title block
-    ws.merge_cells("A1:L1")
+    ws.merge_cells("A1:S1")
     title_cell = ws["A1"]
     title_cell.value = f"SmartInsure Enterprise Document Processing Report — {datetime.now().strftime('%Y-%m-%d')}"
     title_cell.font = title_font
@@ -528,8 +579,9 @@ async def export_documents_excel(
     # 2. Table Headers
     headers = [
         "Uploaded By", "User ID", "Upload Date", "File Name", 
-        "Policy No", "Vehicle No", "Customer Name", "Premium", 
-        "IDV", "Start Date", "End Date", "OCR Status"
+        "Policy No", "Vehicle No", "Customer Name", "Insurance Company",
+        "Vehicle Model", "Engine No", "Chassis No", "Premium", 
+        "IDV", "Start Date", "End Date", "Mobile No", "Email Address", "RTO Location", "OCR Status"
     ]
     
     ws.row_dimensions[3].height = 25
@@ -559,10 +611,17 @@ async def export_documents_excel(
             extracted.get("policy_number", ""),
             extracted.get("vehicle_number", ""),
             extracted.get("insured_name", ""),
+            extracted.get("insurance_company", ""),
+            extracted.get("vehicle_model", ""),
+            extracted.get("engine_number", ""),
+            extracted.get("chassis_number", ""),
             extracted.get("premium", ""),
             extracted.get("idv", ""),
             extracted.get("policy_start_date", ""),
             extracted.get("policy_end_date", ""),
+            extracted.get("mobile_number", ""),
+            extracted.get("email", ""),
+            extracted.get("rto", ""),
             doc.get("ocr_status", "unknown").upper()
         ]
 
@@ -578,7 +637,7 @@ async def export_documents_excel(
                 cell.fill = even_row_fill
                 
             # Alignments
-            if col_idx in [3, 8, 9, 10, 11, 12]:  # Dates, numbers, status
+            if col_idx in [3, 6, 12, 13, 14, 15, 16, 18, 19]:  # Dates, numbers, mobile, RTO, status
                 cell.alignment = Alignment(horizontal="center", vertical="center")
             else:
                 cell.alignment = Alignment(horizontal="left", vertical="center")

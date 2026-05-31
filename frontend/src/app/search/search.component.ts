@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
@@ -16,88 +16,134 @@ type PdfAction = 'download' | 'whatsapp' | 'regenerate' | null;
   styles: [`
     :host { display:block; font-family:'Inter',sans-serif; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    .spin { width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;animation:spin 0.8s linear infinite;display:inline-block;flex-shrink:0; }
-
-    .actions-bar { display:flex; flex-wrap:wrap; gap:10px; }
-    .btn-action {
-      display:inline-flex; align-items:center; justify-content:center; gap:8px;
-      padding:10px 18px; font-size:0.82rem; font-weight:700; border:none; border-radius:8px;
-      cursor:pointer; transition:all 0.2s; letter-spacing:0.3px; min-width:140px;
+    .spin {
+      width:14px; height:14px; border-radius:50%;
+      border:2px solid rgba(255,255,255,0.3); border-top-color:#fff;
+      animation:spin 0.8s linear infinite; display:inline-block; flex-shrink:0;
     }
-    .btn-action:hover:not(:disabled) { transform:translateY(-2px); }
-    .btn-action:disabled { opacity:0.6; cursor:not-allowed; }
-    .btn-dl { background:linear-gradient(135deg,#1565c0,#0d47a1); color:#fff; box-shadow:0 4px 15px rgba(21,101,192,0.3); }
-    .btn-wa { background:linear-gradient(135deg,#25D366,#128C7E); color:#fff; box-shadow:0 4px 15px rgba(37,211,102,0.3); }
-    .btn-print { background:#333; color:#fff; }
-    .btn-copy { background:linear-gradient(135deg,#6366f1,#4f46e5); color:#fff; }
-    .btn-regen { background:linear-gradient(135deg,#F58220,#e86f10); color:#fff; }
 
-    .field-card { background:#0c0c0c; border:1px solid #222; border-radius:12px; padding:14px 16px; }
-    .field-label { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.9px; color:#555; margin-bottom:5px; }
-    .field-value { font-size:0.82rem; font-weight:600; color:#e8e8e8; word-break:break-word; }
-    .badge-veh { background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:2px 8px; font-size:0.6rem; font-weight:800; margin-left:6px; }
-    .sheet-badge { background:rgba(99,102,241,0.1); color:#a5b4fc; border:1px solid rgba(99,102,241,0.25); border-radius:20px; padding:3px 10px; font-size:0.65rem; font-weight:700; }
-    .fuzzy-banner { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); border-radius:12px; padding:10px 16px; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    /* ── Action Buttons ── */
+    .actions-bar {
+      display:flex; flex-wrap:wrap; gap:8px;
+    }
+    .btn-action {
+      display:inline-flex; align-items:center; justify-content:center; gap:7px;
+      padding:10px 16px; font-size:0.8rem; font-weight:700; border:none;
+      border-radius:10px; cursor:pointer; transition:all 0.2s ease;
+      letter-spacing:0.2px; flex:1 1 auto; min-width:130px; max-width:200px;
+      white-space:nowrap;
+    }
+    @media (max-width: 480px) {
+      .btn-action { min-width:calc(50% - 4px); max-width:100%; font-size:0.75rem; padding:10px 10px; }
+      .actions-bar { gap:6px; }
+    }
+    .btn-action:hover:not(:disabled) { transform:translateY(-2px); filter:brightness(1.08); }
+    .btn-action:active:not(:disabled) { transform:translateY(0); }
+    .btn-action:disabled { opacity:0.5; cursor:not-allowed; }
+    .btn-dl   { background:linear-gradient(135deg,#1565c0,#0d47a1); color:#fff; box-shadow:0 4px 14px rgba(21,101,192,0.3); }
+    .btn-wa   { background:linear-gradient(135deg,#25D366,#128C7E); color:#fff; box-shadow:0 4px 14px rgba(37,211,102,0.3); }
+    .btn-print{ background:rgba(255,255,255,0.08); color:#ccc; border:1px solid #333; }
+    .btn-copy { background:linear-gradient(135deg,#6366f1,#4f46e5); color:#fff; box-shadow:0 4px 14px rgba(99,102,241,0.25); }
+    .btn-regen{ background:linear-gradient(135deg,#F58220,#e86f10); color:#fff; box-shadow:0 4px 14px rgba(245,130,32,0.25); }
+
+    /* ── Cards ── */
+    .field-card { background:#0c0c0c; border:1px solid #222; border-radius:10px; padding:12px 14px; }
+    .field-label { font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:0.9px; color:#555; margin-bottom:4px; }
+    .field-value { font-size:0.8rem; font-weight:600; color:#e8e8e8; word-break:break-word; }
+
+    /* ── Badges ── */
+    .badge-veh   { background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:2px 8px; font-size:0.6rem; font-weight:800; }
+    .sheet-badge { background:rgba(99,102,241,0.1); color:#a5b4fc; border:1px solid rgba(99,102,241,0.25); border-radius:20px; padding:3px 10px; font-size:0.63rem; font-weight:700; }
+    .fuzzy-banner{ background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); border-radius:12px; padding:10px 16px; display:flex; align-items:center; gap:10px; margin-bottom:14px; }
     .fuzzy-banner p { font-size:0.78rem; font-weight:600; color:#f59e0b; }
+
+    /* ── Form ── */
     .form-group { display:flex; flex-direction:column; gap:4px; }
-    .form-group label { font-size:0.75rem; color:#a1a1aa; font-weight:600; }
-    .form-group input { background:#1a1a1a; border:1px solid #333; color:white; padding:8px 12px; border-radius:6px; font-size:0.85rem; }
-    .form-group input:focus { border-color:#EF4444; outline:none; }
-    .share-box { background:rgba(37,211,102,0.08); border:1px solid rgba(37,211,102,0.3); border-radius:10px; padding:12px 16px; }
-    .share-url { font-size:0.78rem; color:#e8e8e8; word-break:break-all; font-family:monospace; }
-    .toast { font-size:0.78rem; font-weight:600; padding:8px 12px; border-radius:8px; }
-    .toast-ok { background:rgba(34,197,94,0.1); color:#22c55e; border:1px solid rgba(34,197,94,0.3); }
+    .form-group label { font-size:0.73rem; color:#a1a1aa; font-weight:600; }
+    .form-group input {
+      background:#1a1a1a; border:1px solid #333; color:white;
+      padding:9px 12px; border-radius:8px; font-size:0.85rem; width:100%;
+    }
+    .form-group input:focus { border-color:#EF4444; outline:none; box-shadow:0 0 0 3px rgba(239,68,68,0.1); }
+
+    /* ── Share box ── */
+    .share-box { background:rgba(37,211,102,0.07); border:1px solid rgba(37,211,102,0.25); border-radius:10px; padding:12px 16px; }
+    .share-url { font-size:0.75rem; color:#e8e8e8; word-break:break-all; font-family:monospace; }
+
+    /* ── Toast ── */
+    .toast { font-size:0.78rem; font-weight:600; padding:9px 14px; border-radius:9px; }
+    .toast-ok  { background:rgba(34,197,94,0.1); color:#22c55e; border:1px solid rgba(34,197,94,0.3); }
     .toast-err { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); }
+
+    /* ── Doc wrapper ── */
+    .doc-wrapper {
+      background:#e8e8e8; padding:16px; border-radius:12px;
+      max-width:900px; margin:0 auto; overflow-x:auto;
+    }
+    @media (max-width: 640px) {
+      .doc-wrapper { padding:8px; border-radius:8px; }
+    }
 
     @media print {
       .no-print { display:none !important; }
-      #doc-wrapper { padding:0 !important; border:none !important; background:#fff !important; max-width:100% !important; }
+      .doc-wrapper { padding:0 !important; border:none !important; background:#fff !important; max-width:100% !important; border-radius:0 !important; }
     }
   `],
   template: `
     <div>
-      <div class="mb-8 no-print">
+      <!-- Page Header -->
+      <div class="mb-6 no-print">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-textLight tracking-tight">Search Vehicle</h1>
         <p class="text-sm text-textGray mt-1">Search by plate number and generate a premium breakup quotation PDF.</p>
       </div>
 
-      <div class="flex flex-col sm:flex-row gap-3 mb-6 p-4 rounded-2xl no-print" style="background:#141414; border:1px solid #262626">
+      <!-- Search Bar -->
+      <div class="flex flex-col sm:flex-row gap-3 mb-6 p-4 rounded-2xl no-print"
+        style="background:#141414; border:1px solid #262626">
         <div class="relative flex-1">
-          <span class="absolute inset-y-0 left-4 flex items-center text-textGray pointer-events-none text-sm">🔍</span>
+          <span class="absolute inset-y-0 left-3.5 flex items-center text-textGray pointer-events-none text-sm">🔍</span>
           <input type="text" [(ngModel)]="query" (keyup.enter)="search()"
             placeholder="e.g. GJ06RC1934"
             class="input-field w-full pl-10 pr-4 py-3 font-mono uppercase tracking-widest text-sm">
         </div>
-        <button (click)="search()" [disabled]="loading" class="btn-red px-8 py-3 text-sm disabled:opacity-50 whitespace-nowrap">
+        <button (click)="search()" [disabled]="loading"
+          class="btn-red px-6 py-3 text-sm disabled:opacity-50 whitespace-nowrap rounded-xl font-bold">
           {{ loading ? 'Searching…' : 'Search' }}
         </button>
       </div>
 
+      <!-- Loading Spinner -->
       <div *ngIf="loading" class="flex items-center justify-center py-20 no-print">
         <div class="w-10 h-10 rounded-full border-2 animate-spin" style="border-color:#262626; border-top-color:#EF4444"></div>
       </div>
 
+      <!-- Error -->
       <div *ngIf="error && !loading" class="p-5 rounded-2xl mb-6 no-print"
         style="background:rgba(239,68,68,0.05); border:1px solid rgba(239,68,68,0.2)">
         <p class="text-sm font-bold text-primary">Not Found</p>
         <p class="text-xs text-textGray mt-0.5">{{ error }}</p>
       </div>
 
+      <!-- Results -->
       <div *ngIf="result && !loading">
+        <!-- Fuzzy Match Banner -->
         <div *ngIf="result.fuzzy_match" class="fuzzy-banner no-print">
           <span>⚠️</span>
           <p>Close match returned — please verify the vehicle number.</p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3 mb-5 no-print">
-          <span class="text-2xl font-extrabold font-mono tracking-widest text-textLight">{{ result.vehicle_number }}</span>
+        <!-- Vehicle ID Row -->
+        <div class="flex flex-wrap items-center gap-2 mb-5 no-print">
+          <span class="text-xl sm:text-2xl font-extrabold font-mono tracking-widest text-textLight break-all">
+            {{ result.vehicle_number }}
+          </span>
           <span class="badge-veh">FOUND</span>
           <span class="sheet-badge">📄 {{ result.sheet_name }}</span>
         </div>
 
-        <!-- Partner tracking -->
-        <div class="mb-6 p-4 rounded-xl no-print" style="background:#141414; border:1px solid #262626">
-          <h3 class="text-sm font-bold text-textLight mb-2">Quote Attribution</h3>
+        <!-- Quote Attribution -->
+        <div class="mb-5 p-4 rounded-xl no-print" style="background:#141414; border:1px solid #262626">
+          <h3 class="text-sm font-bold text-textLight mb-1">Quote Attribution</h3>
           <p class="text-xs mb-3" style="color:#555">Agent name appears on the generated PDF.</p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="form-group">
@@ -107,34 +153,41 @@ type PdfAction = 'download' | 'whatsapp' | 'regenerate' | null;
           </div>
         </div>
 
-        <!-- PDF Actions -->
+        <!-- PDF Actions Bar -->
         <div class="actions-bar mb-4 no-print">
           <button class="btn-action btn-dl" (click)="generatePdf('download')" [disabled]="generating">
             <span *ngIf="generating && currentAction==='download'" class="spin"></span>
             <span *ngIf="!generating || currentAction!=='download'">⬇️ Download PDF</span>
           </button>
-          <button class="btn-action btn-print" (click)="printDoc()">🖨️ Print PDF</button>
+          <button class="btn-action btn-print" (click)="printDoc()">🖨️ Print</button>
           <button class="btn-action btn-wa" (click)="generatePdf('whatsapp')" [disabled]="generating">
             <span *ngIf="generating && currentAction==='whatsapp'" class="spin"></span>
             <span *ngIf="!generating || currentAction!=='whatsapp'">💬 Share on WhatsApp</span>
           </button>
-          <button class="btn-action btn-copy" (click)="copyLink()" [disabled]="!shareUrl">🔗 Copy Quote Link</button>
+          <button class="btn-action btn-copy" (click)="copyLink()" [disabled]="!shareUrl">🔗 Copy Link</button>
           <button class="btn-action btn-regen" (click)="generatePdf('regenerate')" [disabled]="generating">
             <span *ngIf="generating && currentAction==='regenerate'" class="spin"></span>
-            <span *ngIf="!generating || currentAction!=='regenerate'">🔄 Regenerate PDF</span>
+            <span *ngIf="!generating || currentAction!=='regenerate'">🔄 Regenerate</span>
           </button>
         </div>
 
-        <div *ngIf="toastMsg" class="toast mb-4 no-print" [class.toast-ok]="toastOk" [class.toast-err]="!toastOk">{{ toastMsg }}</div>
-
-        <div *ngIf="shareUrl" class="share-box mb-6 no-print">
-          <p class="text-xs font-bold mb-2" style="color:#25D366">Shareable Quote Link</p>
-          <p class="share-url">{{ shareUrl }}</p>
-          <p *ngIf="currentQuoteId" class="text-xs text-textGray mt-2">Quote ID: <strong class="text-textLight">{{ currentQuoteId }}</strong></p>
+        <!-- Toast -->
+        <div *ngIf="toastMsg" class="toast mb-4 no-print"
+          [class.toast-ok]="toastOk" [class.toast-err]="!toastOk">
+          {{ toastMsg }}
         </div>
 
-        <div id="doc-wrapper"
-          style="background:#e8e8e8;padding:20px;border-radius:12px;max-width:900px;margin:0 auto">
+        <!-- Shareable Link Box -->
+        <div *ngIf="shareUrl" class="share-box mb-5 no-print">
+          <p class="text-xs font-bold mb-1.5" style="color:#25D366">✅ Shareable Quote Link Ready</p>
+          <p class="share-url">{{ shareUrl }}</p>
+          <p *ngIf="currentQuoteId" class="text-xs text-textGray mt-2">
+            Quote ID: <strong class="text-textLight">{{ currentQuoteId }}</strong>
+          </p>
+        </div>
+
+        <!-- Insurance Document Preview -->
+        <div class="doc-wrapper">
           <app-insurance-doc
             [data]="result.data"
             [vehicleNumber]="result.vehicle_number"
@@ -188,16 +241,10 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.sub = this.authService.currentUser$.subscribe(user => {
       this.isAdmin = user?.role === 'admin';
       this.userRole = user?.role === 'admin' ? 'Administrator' : 'Agent / Partner';
-      // Auto-fill agent name and generated_by from the logged-in user's stored name or username
       const name = user?.name || user?.username || '';
       this.tracking.generated_by_name = name;
-      // Only pre-fill agent_name if it hasn't been manually changed by the user
-      if (!this.tracking.agent_name) {
-        this.tracking.agent_name = name;
-      }
-      if (this.isAdmin && !this.tracking.admin_name) {
-        this.tracking.admin_name = name;
-      }
+      if (!this.tracking.agent_name) this.tracking.agent_name = name;
+      if (this.isAdmin && !this.tracking.admin_name) this.tracking.admin_name = name;
     });
   }
 
@@ -251,6 +298,25 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.toastMsg = msg;
     this.toastOk = ok;
     setTimeout(() => this.toastMsg = '', 4000);
+  }
+
+  /**
+   * Detects whether the user is on a mobile device.
+   * Mobile → wa.me deep link (opens WhatsApp app)
+   * Desktop → web.whatsapp.com (opens WhatsApp Web)
+   */
+  private openWhatsApp(url: string, text: string) {
+    const encodedText = encodeURIComponent(text);
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    let waUrl: string;
+    if (isMobile) {
+      // Opens WhatsApp app directly on mobile
+      waUrl = `whatsapp://send?text=${encodedText}`;
+    } else {
+      // Opens WhatsApp Web on desktop
+      waUrl = `https://web.whatsapp.com/send?text=${encodedText}`;
+    }
+    window.open(waUrl, '_blank');
   }
 
   async generatePdf(action: 'download' | 'whatsapp' | 'regenerate') {
@@ -316,6 +382,7 @@ export class SearchComponent implements OnInit, OnDestroy {
         this.showToast(action === 'regenerate' ? 'PDF regenerated and downloaded.' : 'PDF downloaded successfully.');
       }
 
+      // Upload PDF to backend for persistent shareable link
       const blob = pdf.output('blob');
       this.ds.uploadPdf(blob, {
         vehicle_number: this.result.vehicle_number,
@@ -331,17 +398,16 @@ export class SearchComponent implements OnInit, OnDestroy {
           }
 
           if (action === 'whatsapp') {
-            const msg = encodeURIComponent(
-              `Insurance Premium Breakup for ${this.result.vehicle_number}\n` +
+            const msg =
+              `🚗 *Insurance Premium Breakup*\n` +
+              `Vehicle: *${this.result.vehicle_number}*\n` +
               `Quote ID: ${res.quote_id}\n` +
-              `View/Download: ${res.url}`
-            );
-            const waUrl = `https://api.whatsapp.com/send?text=${msg}`;
-            window.open(waUrl, '_blank');
+              `📄 View/Download: ${res.url}`;
+            this.openWhatsApp(res.url, msg);
             this.showToast('WhatsApp opened with quote link.');
           }
         },
-        error: () => this.showToast('PDF saved locally but upload failed.', false)
+        error: () => this.showToast('PDF saved locally but server upload failed.', false)
       });
     } catch (err) {
       console.error('[PDF]', err);

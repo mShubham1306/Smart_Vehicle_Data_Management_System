@@ -461,9 +461,13 @@ async def login(request: Request, payload: Dict[str, Any]):
             fb_uid = fb_res.get("localId")
             id_token = fb_res.get("idToken")
             
-            # Lookup user info to check email verification
-            fb_user_info = await firebase_get_user_info(id_token)
-            email_verified = fb_user_info.get("emailVerified", False) or user.get("role") == "worker"
+            # If email is already verified in our local MongoDB, bypass Firebase lookup to save latency
+            if user.get("email_verified") or user.get("role") == "worker":
+                email_verified = True
+            else:
+                # Lookup user info from Firebase to check email verification
+                fb_user_info = await firebase_get_user_info(id_token)
+                email_verified = fb_user_info.get("emailVerified", False)
             
             if not email_verified:
                 raise HTTPException(
@@ -477,8 +481,12 @@ async def login(request: Request, payload: Dict[str, Any]):
                 "email_verified": True,
                 "firebase_uid": fb_uid
             }
-            if not user.get("password") or not verify_password(password, user.get("password", "")):
-                set_fields["password"] = hash_password(password)
+            # Only sync password if it is not set locally at all. This completely avoids 
+            # the redundant 100ms bcrypt CPU hashing on subsequent successful sign-ins.
+            if not user.get("password"):
+                loop = asyncio.get_running_loop()
+                set_fields["password"] = await loop.run_in_executor(None, hash_password, password)
+                
             await users_collection.update_one(
                 {"_id": user["_id"]},
                 {"$set": set_fields}
@@ -512,7 +520,10 @@ async def login(request: Request, payload: Dict[str, Any]):
             raise he
     else:
         # Standard Credential check
-        if not verify_password(password, user.get("password", "")):
+        # Offload heavy bcrypt hashing to thread pool executor to keep event loop unblocked
+        loop = asyncio.get_running_loop()
+        matches = await loop.run_in_executor(None, verify_password, password, user.get("password", ""))
+        if not matches:
             attempts = user.get("failed_attempts", 0) + 1
             update = {"$set": {"failed_attempts": attempts}}
             if attempts >= MAX_FAILED_ATTEMPTS:
