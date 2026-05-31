@@ -384,6 +384,25 @@ export class SearchComponent implements OnInit, OnDestroy {
 
       // Upload PDF to backend for persistent shareable link
       const blob = pdf.output('blob');
+
+      if (action === 'whatsapp') {
+        const file = new File([blob], filename, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: filename
+            });
+            this.showToast('Native share opened.');
+            this.generating = false;
+            this.currentAction = null;
+            return;
+          } catch (shareErr) {
+            console.warn('[WebShare] Native share cancelled or failed, falling back...', shareErr);
+          }
+        }
+      }
+
       this.ds.uploadPdf(blob, {
         vehicle_number: this.result.vehicle_number,
         sheet_name: this.result.sheet_name,
@@ -398,9 +417,8 @@ export class SearchComponent implements OnInit, OnDestroy {
           }
 
           if (action === 'whatsapp') {
-            const msg = res.url;
-            this.openWhatsApp(res.url, msg);
-            this.showToast('WhatsApp opened with quote link.');
+            this.openWhatsApp(res.url, res.url);
+            this.showToast('WhatsApp opened with direct PDF link.');
           }
         },
         error: () => this.showToast('PDF saved locally but server upload failed.', false)
