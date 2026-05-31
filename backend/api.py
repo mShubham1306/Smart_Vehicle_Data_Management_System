@@ -63,27 +63,7 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────
 
 def parse_expiry_date(date_str: str):
-    if not date_str or date_str.strip() in ('', '-', 'N/A', 'NA', 'None'):
-        return None
-    s = date_str.strip()
-    formats = [
-        "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d",
-        "%d/%m/%y", "%d-%m-%y",
-        "%d.%m.%Y", "%d.%m.%y",
-        "%m/%d/%Y", "%B %d, %Y",
-    ]
-    for fmt in formats:
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    m = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})', s)
-    if m:
-        try:
-            return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
-        except ValueError:
-            pass
-    return None
+    return services.parse_expiry_date(date_str)
 
 
 def clean(name: str) -> str:
@@ -356,7 +336,15 @@ async def create_or_update_vehicle(payload: Dict[str, Any], current_user: Dict =
     incoming_data = payload.get("data", {})
     data = {field: str(incoming_data.get(field, "")).strip() for field in FIXED_FIELDS}
     data[VEHICLE_FIELD] = vehicle_number
-    record = {"user_id": uid, "vehicle_number": vehicle_number, "sheet_name": sheet_name, "data": data}
+    expiry_str = data.get("expiredInsuranceUpto", "")
+    parsed_exp = services.parse_expiry_date(expiry_str) if expiry_str else None
+    record = {
+        "user_id": uid,
+        "vehicle_number": vehicle_number,
+        "sheet_name": sheet_name,
+        "data": data,
+        "parsed_expiry_date": parsed_exp
+    }
     await vehicles_collection.update_one(
         {"user_id": uid, "vehicle_number": vehicle_number, "sheet_name": sheet_name},
         {"$set": record}, upsert=True)
@@ -439,40 +427,135 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
 
     base_query: Dict[str, Any] = {"user_id": uid, "sheet_name": sheet}
 
-    total_vehicles = await vehicles_collection.count_documents(base_query)
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     seven_days_later  = today + timedelta(days=7)
     thirty_days_later = today + timedelta(days=30)
 
-    all_vehicles = await vehicles_collection.find(base_query, {"_id": 0, "vehicle_number": 1, "data": 1}).to_list(length=50000)
+    # Database-level aggregate calculations (eliminates loading all documents into memory)
+    pipeline = [
+        {"$match": base_query},
+        {
+            "$facet": {
+                "total": [{"$count": "count"}],
+                "statuses": [
+                    {
+                        "$project": {
+                            "status": {
+                                "$cond": [
+                                    {"$eq": ["$parsed_expiry_date", None]},
+                                    "no-data",
+                                    {
+                                        "$cond": [
+                                            {"$lt": ["$parsed_expiry_date", today]},
+                                            "expired",
+                                            "active"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "is_7": {
+                                "$cond": [
+                                    {
+                                        "$and": [
+                                            {"$ne": ["$parsed_expiry_date", None]},
+                                            {"$gte": ["$parsed_expiry_date", today]},
+                                            {"$lte": ["$parsed_expiry_date", seven_days_later]}
+                                        ]
+                                    },
+                                    1,
+                                    0
+                                ]
+                            },
+                            "is_30": {
+                                "$cond": [
+                                    {
+                                        "$and": [
+                                            {"$ne": ["$parsed_expiry_date", None]},
+                                            {"$gte": ["$parsed_expiry_date", today]},
+                                            {"$lte": ["$parsed_expiry_date", thirty_days_later]}
+                                        ]
+                                    },
+                                    1,
+                                    0
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "$group": {
+                            "_id": "$status",
+                            "count": {"$sum": 1},
+                            "expiring_7": {"$sum": "$is_7"},
+                            "expiring_30": {"$sum": "$is_30"}
+                        }
+                    }
+                ],
+                "top_companies": [
+                    {"$match": {"data.vehicleInsuranceCompanyName": {"$not": {"$in": ["", "-", "N/A", None]}}}},
+                    {"$group": {"_id": "$data.vehicleInsuranceCompanyName", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 5}
+                ],
+                "top_fuels": [
+                    {"$match": {"data.fuelType": {"$not": {"$in": ["", "-", "N/A", None]}}}},
+                    {"$group": {"_id": "$data.fuelType", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 6}
+                ],
+                "expiry_by_month": [
+                    {"$match": {"parsed_expiry_date": {"$ne": None}}},
+                    {
+                        "$group": {
+                            "_id": {
+                                "year": {"$year": "$parsed_expiry_date"},
+                                "month": {"$month": "$parsed_expiry_date"}
+                            },
+                            "count": {"$sum": 1}
+                        }
+                    },
+                    {"$sort": {"_id.year": 1, "_id.month": 1}},
+                    {"$limit": 100}
+                ]
+            }
+        }
+    ]
 
+    agg_results = await vehicles_collection.aggregate(pipeline).to_list(length=1)
+    
+    total_vehicles = 0
     active_count = expired_count = no_insurance_count = expiring_7 = expiring_30 = 0
-    monthly_data: Dict[str, int] = {}
+    top_companies = []
+    top_fuels = []
     expiry_by_month: Dict[str, int] = {}
-    company_counts: Dict[str, int] = {}
-    fuel_counts: Dict[str, int] = {}
-
-    for v in all_vehicles:
-        data = v.get("data", {})
-        expiry_dt = parse_expiry_date(data.get("expiredInsuranceUpto", ""))
-
-        if expiry_dt is None:              no_insurance_count += 1
-        elif expiry_dt < today:            expired_count += 1
-        else:                              active_count += 1
-
-        if expiry_dt:
-            if today <= expiry_dt <= seven_days_later:   expiring_7  += 1
-            if today <= expiry_dt <= thirty_days_later:  expiring_30 += 1
-            mk = expiry_dt.strftime("%b %Y")
-            expiry_by_month[mk] = expiry_by_month.get(mk, 0) + 1
-
-        company = data.get("vehicleInsuranceCompanyName", "").strip()
-        if company and company not in ('', '-', 'N/A'):
-            company_counts[company] = company_counts.get(company, 0) + 1
-
-        fuel = data.get("fuelType", "").strip()
-        if fuel and fuel not in ('', '-', 'N/A'):
-            fuel_counts[fuel] = fuel_counts.get(fuel, 0) + 1
+    monthly_data: Dict[str, int] = {}
+    
+    if agg_results:
+        result = agg_results[0]
+        total_vehicles = result["total"][0]["count"] if result.get("total") else 0
+        
+        for s in result.get("statuses", []):
+            status_id = s["_id"]
+            status_count = s["count"]
+            if status_id == "active":
+                active_count = status_count
+            elif status_id == "expired":
+                expired_count = status_count
+            elif status_id == "no-data":
+                no_insurance_count = status_count
+            expiring_7 += s.get("expiring_7", 0)
+            expiring_30 += s.get("expiring_30", 0)
+            
+        top_companies = [{"name": str(c["_id"]).strip(), "count": c["count"]} for c in result.get("top_companies", [])]
+        top_fuels = [{"name": str(f["_id"]).strip(), "count": f["count"]} for f in result.get("top_fuels", [])]
+        
+        month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        for item in result.get("expiry_by_month", []):
+            y = item["_id"]["year"]
+            m = item["_id"]["month"]
+            count = item["count"]
+            if 1 <= m <= 12:
+                mk = f"{month_names[m]} {y}"
+                expiry_by_month[mk] = count
 
     all_uploads = await uploads_collection.find({"user_id": uid, "sheet_name": sheet}, {"_id": 0}).sort("timestamp", 1).to_list(length=1000)
     for u in all_uploads:
@@ -503,9 +586,6 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
             "status":  status,
         })
 
-    top_companies = sorted(company_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    top_fuels     = sorted(fuel_counts.items(),    key=lambda x: x[1], reverse=True)[:6]
-
     def month_sort_key(k):
         try: return datetime.strptime(k, "%b %Y")
         except: return datetime.min
@@ -529,10 +609,9 @@ async def get_dashboard_stats(sheet: Optional[str] = Query("default"),
         "chart_expiry_data":    [expiry_by_month[k] for k in sorted_expiry_months],
         "chart_pie_labels":     ["Active", "Expired", "No Data"],
         "chart_pie_data":       [active_count, expired_count, no_insurance_count],
-        "top_companies":        [{"name": k, "count": v} for k, v in top_companies],
-        "fuel_types":           [{"name": k, "count": v} for k, v in top_fuels],
+        "top_companies":        top_companies,
+        "fuel_types":           top_fuels,
     }
-    # Store in local fallback cache
     _local_stats_cache[cache_key] = (now + timedelta(seconds=180), stats_result)
 
     if _rc:

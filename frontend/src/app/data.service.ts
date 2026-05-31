@@ -66,7 +66,7 @@ export class DataService {
 
   private _hasToken(): boolean {
     try {
-      return !!localStorage.getItem('smartinsure_token');
+      return !!sessionStorage.getItem('smartinsure_token');
     } catch {
       return false;
     }

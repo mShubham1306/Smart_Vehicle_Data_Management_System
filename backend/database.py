@@ -62,6 +62,7 @@ async def init_db():
     await vehicles_collection.create_index([("user_id", 1), ("vehicle_number", 1)])
     await vehicles_collection.create_index([("data.vehicleInsuranceCompanyName", 1)])
     await vehicles_collection.create_index([("user_id", 1), ("searchable_tokens", 1)])
+    await vehicles_collection.create_index([("user_id", 1), ("sheet_name", 1), ("parsed_expiry_date", 1)])
     
     # Text index for Tier 4 emergency searches
     try:
@@ -134,5 +135,30 @@ async def init_db():
         )
     except Exception:
         pass
+
+    # ── Migration: Populate parsed_expiry_date for existing vehicles ──────────
+    try:
+        from services import parse_expiry_date
+        from pymongo import UpdateOne
+        cursor = vehicles_collection.find({"parsed_expiry_date": {"$exists": False}})
+        updates = []
+        async for doc in cursor:
+            data = doc.get("data", {})
+            expiry_str = data.get("expiredInsuranceUpto", "")
+            parsed_exp = parse_expiry_date(expiry_str) if expiry_str else None
+            updates.append(
+                UpdateOne(
+                    {"user_id": doc["user_id"], "vehicle_number": doc["vehicle_number"], "sheet_name": doc["sheet_name"]},
+                    {"$set": {"parsed_expiry_date": parsed_exp}}
+                )
+            )
+            if len(updates) >= 2000:
+                await vehicles_collection.bulk_write(updates)
+                updates = []
+        if updates:
+            await vehicles_collection.bulk_write(updates)
+        print("[init_db] Existing records migrated with parsed_expiry_date.")
+    except Exception as e:
+        print(f"[init_db] Migration failed (non-critical): {e}")
 
     print("[init_db] All indexes created successfully.")

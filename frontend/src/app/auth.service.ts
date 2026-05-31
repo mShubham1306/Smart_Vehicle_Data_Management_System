@@ -56,13 +56,13 @@ export class AuthService {
   getRole(): string  { return this._currentUser.getValue()?.role ?? 'worker'; }
   getAssignedSheet(): string { return this._currentUser.getValue()?.assigned_sheet ?? 'default'; }
 
-  getToken(): string | null { return localStorage.getItem(TOKEN_KEY); }
-  getRefreshToken(): string | null { return localStorage.getItem(REFRESH_KEY); }
+  getToken(): string | null { return sessionStorage.getItem(TOKEN_KEY); }
+  getRefreshToken(): string | null { return sessionStorage.getItem(REFRESH_KEY); }
   getUserId(): string | null { return this._currentUser.getValue()?.id ?? null; }
 
   /** Returns true if the access token is expired or within 30s of expiry */
   isTokenExpired(bufferSeconds = 30): boolean {
-    const expStr = localStorage.getItem(EXPIRY_KEY);
+    const expStr = sessionStorage.getItem(EXPIRY_KEY);
     if (!expStr) return true;
     const exp = parseInt(expStr, 10);
     return Date.now() / 1000 >= exp - bufferSeconds;
@@ -70,20 +70,20 @@ export class AuthService {
 
   /** Returns seconds until token expires */
   getSecondsUntilExpiry(): number {
-    const expStr = localStorage.getItem(EXPIRY_KEY);
+    const expStr = sessionStorage.getItem(EXPIRY_KEY);
     if (!expStr) return 0;
     return Math.max(0, parseInt(expStr, 10) - Math.floor(Date.now() / 1000));
   }
 
   private setSession(token: string, user: User, refreshToken?: string, expiresInHours?: number) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
+    sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (refreshToken) sessionStorage.setItem(REFRESH_KEY, refreshToken);
 
     // Store expiry timestamp
     const hours = expiresInHours ?? (user.role === 'admin' ? 48 : 3);
     const expiry = Math.floor(Date.now() / 1000) + hours * 3600;
-    localStorage.setItem(EXPIRY_KEY, expiry.toString());
+    sessionStorage.setItem(EXPIRY_KEY, expiry.toString());
 
     this._currentUser.next(user);
     this._requireReauth.next(false);
@@ -95,7 +95,7 @@ export class AuthService {
 
   private getStoredUser(): User | null {
     try {
-      const data = localStorage.getItem(USER_KEY);
+      const data = sessionStorage.getItem(USER_KEY);
       return data ? JSON.parse(data) : null;
     } catch { return null; }
   }
@@ -127,35 +127,16 @@ export class AuthService {
 
   private _handleSessionExpired() {
     this._stopSessionTimer();
-    const refreshToken = this.getRefreshToken();
-    const userId = this.getUserId();
-    if (refreshToken && userId) {
-      // Attempt silent refresh
-      this.http.post<any>(`${API}/refresh`, { refresh_token: refreshToken, user_id: userId })
-        .subscribe({
-          next: (res) => {
-            if (res.token && this._currentUser.getValue()) {
-              const user = this._currentUser.getValue()!;
-              this.setSession(res.token, user, res.refresh_token, res.expires_in_hours);
-            }
-          },
-          error: () => {
-            // Refresh failed — require re-auth
-            this._requireReauth.next(true);
-            this._clearStorage();
-          }
-        });
-    } else {
-      this._requireReauth.next(true);
-      this._clearStorage();
-    }
+    this._clearStorage();
+    this._requireReauth.next(true);
+    this.router.navigate(['/login']);
   }
 
   private _clearStorage() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-    localStorage.removeItem(EXPIRY_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(REFRESH_KEY);
+    sessionStorage.removeItem(EXPIRY_KEY);
     this._currentUser.next(null);
   }
 
@@ -257,7 +238,9 @@ export class AuthService {
   }
 
   forceReauth() {
-    this._requireReauth.next(true);
+    this._stopSessionTimer();
     this._clearStorage();
+    this._requireReauth.next(true);
+    this.router.navigate(['/login']);
   }
 }

@@ -674,12 +674,17 @@ def _process_dataframe(
         # ── Build searchable_tokens for all normalized plate forms ────────────
         s_tokens = build_searchable_tokens(raw_vnum)
 
+        # Pre-parse the expiry date for fast database aggregates
+        expiry_str = data.get("expiredInsuranceUpto", "")
+        parsed_exp = parse_expiry_date(expiry_str) if expiry_str else None
+
         records.append({
             "vehicle_number": vnum,
             "sheet_name": sheet_name,
             "data": data,
             "column_map": mapping_report,
             "searchable_tokens": s_tokens,
+            "parsed_expiry_date": parsed_exp,
         })
 
     logger.info(f"[Upload] Sheet '{sheet_name}': {len(records)} valid records from {len(data_rows)} rows")
@@ -705,6 +710,29 @@ def _schedule_persist(mapping_report: Dict[str, str], user_id: str) -> None:
             asyncio.run(_do())
         except Exception as exc:
             logger.warning(f"[LearnedCache] Failed to persist mappings: {exc}")
+
+def parse_expiry_date(date_str: str) -> Optional[datetime]:
+    if not date_str or date_str.strip() in ('', '-', 'N/A', 'NA', 'None'):
+        return None
+    s = date_str.strip()
+    formats = [
+        "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d",
+        "%d/%m/%y", "%d-%m-%y",
+        "%d.%m.%Y", "%d.%m.%y",
+        "%m/%d/%Y", "%B %d, %Y",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    m = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})', s)
+    if m:
+        try:
+            return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            pass
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

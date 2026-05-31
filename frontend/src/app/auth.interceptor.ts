@@ -47,44 +47,6 @@ function _handle401(
   authService: AuthService,
   router: Router
 ): Observable<any> {
-  const refreshToken = authService.getRefreshToken();
-  const userId = authService.getUserId();
-
-  if (!refreshToken || !userId) {
-    authService.forceReauth();
-    return throwError(() => new HttpErrorResponse({ status: 401 }));
-  }
-
-  if (isRefreshing) {
-    // Queue behind the in-progress refresh
-    return refreshDone$.pipe(
-      filter(token => token !== null),
-      take(1),
-      switchMap(newToken => {
-        return next(req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } }));
-      })
-    );
-  }
-
-  isRefreshing = true;
-  refreshDone$.next(null);
-
-  return authService.refreshAccessToken().pipe(
-    switchMap((res: any) => {
-      isRefreshing = false;
-      if (res.token) {
-        refreshDone$.next(res.token);
-        // Retry original request with new token
-        return next(req.clone({ setHeaders: { Authorization: `Bearer ${res.token}` } }));
-      }
-      authService.forceReauth();
-      return throwError(() => new HttpErrorResponse({ status: 401 }));
-    }),
-    catchError((err) => {
-      isRefreshing = false;
-      refreshDone$.next(null);
-      authService.forceReauth();
-      return throwError(() => err);
-    })
-  );
+  authService.forceReauth();
+  return throwError(() => new HttpErrorResponse({ status: 401 }));
 }

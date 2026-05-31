@@ -398,11 +398,7 @@ export class SearchComponent implements OnInit, OnDestroy {
           }
 
           if (action === 'whatsapp') {
-            const msg =
-              `🚗 *Insurance Premium Breakup*\n` +
-              `Vehicle: *${this.result.vehicle_number}*\n` +
-              `Quote ID: ${res.quote_id}\n` +
-              `📄 View/Download: ${res.url}`;
+            const msg = res.url;
             this.openWhatsApp(res.url, msg);
             this.showToast('WhatsApp opened with quote link.');
           }

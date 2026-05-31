@@ -714,7 +714,7 @@ export class EntryComponent implements OnInit, OnDestroy {
   // ── Export ────────────────────────────────────────────────────────────
 
   exportSheet() {
-    const token = localStorage.getItem('token') || '';
+    const token = this.authService.getToken() || '';
     this.http.get(`${API}/export?sheet=${this.activeSheet}`,
       { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' }
     ).subscribe(blob => {
