@@ -429,7 +429,9 @@ export class SearchComponent implements OnInit, OnDestroy {
           return;
         }
 
-        window.open('https://web.whatsapp.com/', '_blank');
+        // If WhatsApp app is not installed, open WhatsApp Web send interface directly.
+        // Note: browser security does not allow auto-attaching a local PDF to WhatsApp Web.
+        window.open('https://web.whatsapp.com/send?text=', '_blank');
         this.showToast('WhatsApp app not installed — opened WhatsApp Web. Attach the downloaded PDF to share.');
         return;
       }
